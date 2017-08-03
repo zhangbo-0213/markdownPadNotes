@@ -1,6 +1,7 @@
 ## WCF学习 ##
 WCF：Windows Communication Foundation  
-视窗操作系统通信框架，.net3.5后支持，.net中提供的统一的通信编程模型，通过配置文件对通信方式进行修改。  
+视窗操作系统通信框架，.net3.5后支持，.net中提供的统一的通信编程模型，通过配置文件对通信方式进行修改。    
+WCF是微软实现SOA（面向服务架构）的解决方案，服务就是提供给别人使用的应用程序。比如说网站要显示天气预报，只要知道天气预报网站给我的接口就可以了，具体实现细节不用管，这就是SOA的松耦合性。
 
 ----------
 WCF程序的基本组成包括：  
@@ -9,6 +10,11 @@ WCF程序的基本组成包括：
 - **服务端**（实现契约接口和提供服务）   
 - **客户端**（使用，消费服务端提供的服务）  
 - **配置文件**（对通信方式进行配置）  
+
+作为客户端也就是服务的消费者，必须要知道服务部署在哪，要知道如何通信，也要知道双方的数据传输规则，在WCF中这三样内容被整体称为“终结点”，上述三个方面被称为“地址、绑定、契约”（也就是“ABC”），也就是说终结点是服务的“出入口”。
+
+
+----------
 
 **1.入门小实例**  
 
@@ -88,7 +94,7 @@ WCF程序的基本组成包括：
 
 - **客户端部分**  
 
-新建控制台应用程序作为客户端使用服务端提供的程序，添加对契约项目的引用     
+新建控制台应用程序作为客户端使用服务端提供的程序，**添加对契约项目的引用**  ，添加System.ServiceModel引用   
 
 	namespace WCF_Client
 	{
@@ -134,6 +140,9 @@ WCF程序的基本组成包括：
 **使用多个Binding建立通信**    
 入门实例中的Binding使用的是net.tcpBinding，除了这种常用的Binding类型，httpBinding也是较为常用的类型，在建立的一个契约下，可以创建多个终结点，使用不同类型的Binding进行服务的传递，服务器端和客户端对应添加终结点，需要指定对应的Address,Binding和Contract，**值得注意的是**，当使用httpBinding类型节点时，调试程序可能会出现"http无法注册...该进程不具备此进程命名空间的访问权限",此问题是因为在Win7及以后系统中运行注册URL的程序需要具有管理员特权。**解决方法：**使用管理员权限运行生成的EXE文件
 使用管理员权限运行VS，则宿主主机也会使用管理员权限启动  
+
+
+----------
 
 **2.使用代码实现配置过程**   
 入门实例中通过向导式的配置设置配置文件，这是微软推荐的方式，除了使用这种方式完成配置文件的设置，还可以通过纯代码的方式实现配置过程。  
@@ -247,3 +256,212 @@ ServiceHost
     	}
 		}  
 测试过程中，同样需要使用管理员权限运行生成的EXE文件，客户端能够通过netTcpbinding和basicHttpBinding对服务进行调用
+
+----------
+
+**3.通过添加服务引用的方式使客户端摆脱对契约接口的dll引用**   
+在实例1中，通过在客户端对契约项目的引用，创建了契约代理的对象来调用服务端提供的服务，即     
+
+		var channel=new ChannelFactory<ICommunicationContract>("clientEndpoint");
+        var client = channel.CreateChannel();
+这里在生成契约代理对象时，需要指定契约的接口类型，也就是需要应用契约接口的.dll文件，可以通过添加服务引用的方式来摆脱对该.dll文件的引用，具体实例：  
+
+- **契约及实现部分**    
+	
+		namespace Contracts
+		{
+    	[ServiceContract(Name = "CalculatrService",Namespace = "http://www.artech.com/")]
+    	public interface ICalculator
+    	{
+        [OperationContract]
+        double Add(double x,double y);
+
+        [OperationContract]
+        double Subtract(double x, double y);
+
+        [OperationContract]
+        double Multiply(double x,double y);
+
+        [OperationContract]
+        double Divide(double x,double y);
+    	}
+		}
+	
+	契约部分在特性中添加了Name属性，在客户端可以通过该属性名找到对应的服务，契约部分需要添加System.ServiceModel引用  
+		
+		namespace Services
+		{
+    	public class CalculatorService:ICalculator
+    	{
+        public double Add(double x, double y)
+        {
+            return x + y;
+        }
+
+        public double Subtract(double x, double y)
+        {
+            return x - y;
+        }
+
+        public double Multiply(double x, double y)
+        {
+            return x*y;
+        }
+
+        public double Divide(double x, double y)
+        {
+            return x/y;
+        }
+    	}
+		}    
+	
+	契约实现部分
+   
+- **服务端部分**    
+
+		namespace Hosting
+		{
+    	class Program
+    	{
+        static void Main(string[] args)
+        {
+            using (ServiceHost host = new ServiceHost(typeof (CalculatorService)))
+            {
+                //通过代码的方式添加终结点，指定ABC（Address,Binding,Contract）
+                host.AddServiceEndpoint(typeof (ICalculator), new WSHttpBinding(), "http://127.0.0.1:9999/calculatorservice");
+                if (host.Description.Behaviors.Find<ServiceMetadataBehavior>() == null)
+                {
+                    //WCF服务的描述通过元数据（Metadata）形式发布；
+                    //WCF中元数据的发布通过特殊的服务行为ServiceMetadataBehavior来实现；
+                    //为创建的host添加ServiceMetadataBehavior，采用基于HTTP-GET的元数据获取方式，发布地址由ServiceMetadataBehavior的HttpGetUri指定；
+                    //服务开启后，通过http://127.0.0.1:9999/calculatorservice/metadata 得到以WSDL形式体现的服务元数据
+                    ServiceMetadataBehavior behavior =new ServiceMetadataBehavior();
+                    behavior.HttpGetEnabled = true;
+                    behavior.HttpGetUrl=new Uri("http://127.0.0.1:9999/calculatorservice/metadata");
+                    host.Description.Behaviors.Add(behavior);
+                }
+                host.Opened += delegate { Console.WriteLine("CalculatorService 已经启动，请按任意键终止"); };
+                host.Open();
+                Console.ReadKey();
+            }
+        }
+    	}
+		}  
+	服务端部分使用代码的方式添加终结点，并将元数据进行发布，这样客户端在添加服务引用时指定引用的地址，即可找到对应的服务，服务端需要引用System.ServiceModel及契约和实现部分的项目引用   
+
+
+- **客户端部分**  
+
+		namespace Client
+		{
+    	class Program
+    	{
+        static void Main(string[] args)
+        {
+            CalculatrServiceClient client=new CalculatrServiceClient();
+            Console.WriteLine("x+y={2},when x={0},y={1}",1,2,client.Add(1,2));
+            Console.WriteLine("x-y={2},when x={0},y={1}", 1, 2, client.Subtract(1, 2));
+            Console.WriteLine("x*y={2},when x={0},y={1}", 1, 2, client.Multiply(1, 2));
+            Console.WriteLine("x/y={2},when x={0},y={1}", 1, 2, client.Divide(1, 2));
+            Console.ReadKey();
+        }
+    	}
+		}
+		
+	客户端中CalculatorServiceClient类是在添加服务引用时，WCF根据服务地址自动生成的类，在客户端的Service References文件夹的References.cs中，这个类中包含了契约实现部分的方法，相当于是服务端的一个等效的契约接口，这样客户端只需要引用System.ServiceModel，从而摆脱对服务端契约项目的引用   
+
+----------
+
+**4.终结点地址与WCF寻址**  
+WCF服务端与客户端之间的通信都是基于终结点进行，服务提供者将终结点（一个或多个）暴露给消费者，通过HTTP-GET或MEX终结点的方式将元数据(Metadata)以WSDL（网络服务描述语言）的方式对外发布，消费者通过访问WSDL，导入元数据生成服务代理相关的代码和配置。借助于自动生成的服务代理相关的代码和配置，创建相匹配的终结点对服务进行访问。  
+
+**为服务指定地址**    
+
+1. **通过代码方式指定地址**     
+使用自我寄宿的方式对某个服务进行寄宿的时候，可以通过ServiceHostBase或其子类ServiceHost的AddServiceEndpoint方法为添加的终结点指定相应的地址，代码如下：	
+
+		using (ServiceHost host = new ServiceHost(typeof (CalculatorService)))
+    	{
+     	//通过代码的方式添加终结点，指定ABC（Address,Binding,Contract）
+     	host.AddServiceEndpoint(typeof (ICalculator), new WSHttpBinding(), "http://127.0.0.1:9999/calculatorservice");  
+		 host.Open();
+	 	//Other Code
+    	}   
+
+2. **通过配置指定地址**     
+WCF中可以通过配置的方式添加终结点，在对应服务的配置节点下,可以添加相关的终结点列表。      
+
+		<system.serviceModel>
+        <bindings>
+            <netTcpBinding>
+                <binding name="NewBinding0">
+                    <security mode="None" />
+                </binding>
+            </netTcpBinding>
+        </bindings>
+        <services>
+            <service name="WCF_Service.CommunicationService">
+                <endpoint address="net.tcp://localhost:8080/wcf" binding="netTcpBinding"
+                    bindingConfiguration="" contract="WCF_Interface.ICommunicationContract" />
+            </service>
+        </services>
+    	</system.serviceModel>
+
+3.**IIS寄宿下对地址的指定**   
+与自我寄宿不同，IIS寄宿的方式需要为服务创建一个.svc文件，并将该文件部署到一个确定的IIS虚拟目录下，服务的消费者通过访问.svc文件进行服务的调用，所以svc文件的地址就是服务地址，无需再通过配置指定终结点的地址。  
+
+
+----------
+**基地址与相对地址**  
+某个服务的终结点地址除了可以以绝对地址的方式指定，还可以采取“基地址+相对地址”的方式进行设置。对于一个服务来说，可以指定一个或多个基地址，但对于一个具体的传输协议类型，只能有一个唯一的基地址。服务的基地址和终结点的相对地址可以通过代码的方式，在创建ServiceHost对象时在构造函数中指定：  
+
+	public class ServiceHost : ServiceHostBase
+	{	
+	public ServiceHost(Type serviceType, params Uri[] baseAddresses);
+	public ServiceHost(object singletonInstance, params Uri[] baseAddresses);
+	}  
+
+在下面的代码中，在自我寄宿服务时，添加了两个基地址，一个是基于HTTP的，另一个是基于net.tcp的。添加了两个终结点，一个采用Http的BasicHttpBinding,另一个采用基于TCP的NetTcpBinding  
+
+	static void Main(string[] args)
+        {
+            //定义两个基地址，一个用于http,一个用于tcp
+            Uri httpAddress=new Uri("http://localhost:8080/wcf");
+            Uri tcpAddress=new Uri("net.tcp://localhost:8081/wcf");
+            //服务类型，实现接口的类
+            Type serviceType = typeof (CommunicationContract);
+
+            //定义一个ServiceHost
+            using (ServiceHost host = new ServiceHost(serviceType, new Uri[] { httpAddress, tcpAddress }))
+            {
+                //定义一个basicHttpBinding 
+                Binding basicHttpBinding=new BasicHttpBinding();
+                string address = "";
+                //创建endPoint，使用Binding和address作为参数
+                host.AddServiceEndpoint(typeof (WCF_Demo3_Service.ICommunicationContract), basicHttpBinding, address);
+
+                //定义一个netTcpBinding
+                Binding tcpBinding=new NetTcpBinding();
+                address = "";
+                host.AddServiceEndpoint(typeof (WCF_Demo3_Service.ICommunicationContract), tcpBinding, address);
+
+                //启动服务
+                host.Open();
+                Console.WriteLine("WCF_Demo3 服务已开启");
+                Console.ReadKey();
+                host.Close();
+            }
+        }  
+由于AddServiceEndpoint指定的是相对地址，WCF系统会根据Binding采用的传输协议在ServiceHost的基地址列表中寻找与之相配的基地址，相对地址和基地址组合确定为终结点的绝对地址。**值得注意的是**对于一个确定的传输协议，最多只能有一个基地址。服务的基地址和相对地址同样可以通过配置的方式进行设定。  
+
+
+----------
+
+**地址的终结点共享**   
+一个终结点由ABC三个要素构成（地址，绑定，契约），对于同一个服务的若干终结点，服务一般只实现唯一一个契约，所有的终结点共享相同的服务契约，这种情况下，终结点的地址不能共享，对应地址必须是不同的。  
+如果一个服务实现了多个服务契约，基于多个服务契约在添加终结点时，这些针对不同服务契约的终结点可以共享相同的地址和绑定。  
+
+
+----------
+**在客户端指定地址**    
+客户端调用服务时，通过两种调用方式，一种是通过代码生成工具或者添加服务引用导入元数据生成服务代理类型，另一种通过ChannelFactory<T>或DuplexChannelFactory<T>来创建服务代理对象。
