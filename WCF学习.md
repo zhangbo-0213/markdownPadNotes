@@ -698,7 +698,7 @@ AddressHeader定义在System.ServiceModel.Channels命名空间下，表示用于
 
 ![](http://i.imgur.com/yaynFQH.png)  
 
-示例代码中，为确定受访者类型，购买服务的用户（Licensed user）和免费试用的用户（Trivial User）,添加一个Name为UserType的AddressHeader,NameSpace为 http://www.artech.com/。目的是让这个终结点只能为第一类用户提供服务，将AddressHeader的Value设为Licensed User。通过AddressHeader.CreateAddressHeader静态方法创建AddressHeader对象，传入EndpointAddress的构造函数创建EndpointAddress对象，再创建ServiceEndpoint对象，添加到服务宿主的终结点中。  
+示例代码中，为确定受访者类型，购买服务的用户（Licensed user）和免费试用的用户（Trivial User）,添加一个Name为UserType的AddressHeader,NameSpace为 http://www.artech.com/。 目的是让这个终结点只能为第一类用户提供服务，将AddressHeader的Value设为Licensed User。通过AddressHeader.CreateAddressHeader静态方法创建AddressHeader对象，传入EndpointAddress的构造函数创建EndpointAddress对象，再创建ServiceEndpoint对象，添加到服务宿主的终结点中。  
 通过配置的方式与之前类似，定义在< headers >的配置项中，指定Name，NameSpace,Value，与上面的等效配置如下 ： 
 
 ![](http://i.imgur.com/AUAXMIt.png)   
@@ -706,6 +706,11 @@ AddressHeader定义在System.ServiceModel.Channels命名空间下，表示用于
 客户端同样通过代码和配置的方式对AddressHeader进行设定，采用配置的方式设定：   
 
 ![](http://i.imgur.com/hUNb2jh.png)  
-**由于在服务端为服务的终结点指定了AddressHeader，意味着该终结点只接受消息的报头与该AddressHeader相匹配的消息请求。**
+**由于在服务端为服务的终结点指定了AddressHeader，意味着该终结点只接受消息的报头与该AddressHeader相匹配的消息请求。**  
+
+----------
+**5.端口共享**    
+对于WCF来说，当对某个服务进行寄宿的时候，一个端口会被独占使用。例如使用两个控制台程序对两个服务Service1和Service2进行寄宿，两个服务的终结点地址设置为同一个，先后运行这两个服务寄宿的控制台程序时，第一个能正常运行，第二个则会报错，提示端口已经用于网络监听。
+
 
 	
