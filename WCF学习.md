@@ -407,7 +407,7 @@ WCF中可以通过配置的方式添加终结点，在对应服务的配置节�
         </services>
     	</system.serviceModel>
 
-3.**IIS寄宿下对地址的指定**   
+3. **IIS寄宿下对地址的指定**   
 与自我寄宿不同，IIS寄宿的方式需要为服务创建一个.svc文件，并将该文件部署到一个确定的IIS虚拟目录下，服务的消费者通过访问.svc文件进行服务的调用，所以svc文件的地址就是服务地址，无需再通过配置指定终结点的地址。  
 
 
@@ -464,4 +464,249 @@ WCF中可以通过配置的方式添加终结点，在对应服务的配置节�
 
 ----------
 **在客户端指定地址**    
-客户端调用服务时，通过两种调用方式，一种是通过代码生成工具或者添加服务引用导入元数据生成服务代理类型，另一种通过ChannelFactory<T>或DuplexChannelFactory<T>来创建服务代理对象。
+客户端调用服务时，通过两种调用方式，一种是通过代码生成工具或者添加服务引用导入元数据生成服务代理类型，另一种通过ChannelFactory<T>或DuplexChannelFactory<T>来创建服务代理对象。  
+ 
+- **为ClientBase< TChannel >指定地址**   
+ 
+通过代码生成器或添加服务引用的方式，生成的核心类是继承自System.ServiceModel.ClinetBase< TChannel >的子类，TChannel为服务契约类型，对于如下这个契约：   
+
+	 namespace Contracts
+	{
+    [ServiceContract(Name = "CalculatrService",Namespace = "http://www.artech.com/")]
+    public interface ICalculator
+    {
+        [OperationContract]
+        double Add(double x,double y);
+
+        [OperationContract]
+        double Subtract(double x, double y);
+
+        [OperationContract]
+        double Multiply(double x,double y);
+
+        [OperationContract]
+        double Divide(double x,double y);
+    }
+	}  
+通过代码生成器和添加服务引用的方式，会生成3个类，CalculatrService,CalculatrServiceChannel,CalculatrServiceClient(这里的Calculatr实际上对应的就是服务契约ICalculator，由于在服务契约ICalculator中添加ServieContract特性时，添加了Name属性，所以客户端生成的对应类使用了Name这个属性来表示ICalculator服务契约)   
+
+	namespace Client.CalculatorService { 
+    [System.CodeDom.Compiler.GeneratedCodeAttribute("System.ServiceModel", "4.0.0.0")]
+    [System.ServiceModel.ServiceContractAttribute(Namespace="http://www.artech.com/", ConfigurationName="CalculatorService.CalculatrService")]  
+  
+	//CalculatrService
+    public interface CalculatrService {
+        
+        [System.ServiceModel.OperationContractAttribute(Action="http://www.artech.com/CalculatrService/Add", ReplyAction="http://www.artech.com/CalculatrService/AddResponse")]
+        double Add(double x, double y);
+        
+        [System.ServiceModel.OperationContractAttribute(Action="http://www.artech.com/CalculatrService/Add", ReplyAction="http://www.artech.com/CalculatrService/AddResponse")]
+        System.Threading.Tasks.Task<double> AddAsync(double x, double y);
+        
+        [System.ServiceModel.OperationContractAttribute(Action="http://www.artech.com/CalculatrService/Subtract", ReplyAction="http://www.artech.com/CalculatrService/SubtractResponse")]
+        double Subtract(double x, double y);
+        
+        [System.ServiceModel.OperationContractAttribute(Action="http://www.artech.com/CalculatrService/Subtract", ReplyAction="http://www.artech.com/CalculatrService/SubtractResponse")]
+        System.Threading.Tasks.Task<double> SubtractAsync(double x, double y);
+        
+        [System.ServiceModel.OperationContractAttribute(Action="http://www.artech.com/CalculatrService/Multiply", ReplyAction="http://www.artech.com/CalculatrService/MultiplyResponse")]
+        double Multiply(double x, double y);
+        
+        [System.ServiceModel.OperationContractAttribute(Action="http://www.artech.com/CalculatrService/Multiply", ReplyAction="http://www.artech.com/CalculatrService/MultiplyResponse")]
+        System.Threading.Tasks.Task<double> MultiplyAsync(double x, double y);
+        
+        [System.ServiceModel.OperationContractAttribute(Action="http://www.artech.com/CalculatrService/Divide", ReplyAction="http://www.artech.com/CalculatrService/DivideResponse")]
+        double Divide(double x, double y);
+        
+        [System.ServiceModel.OperationContractAttribute(Action="http://www.artech.com/CalculatrService/Divide", ReplyAction="http://www.artech.com/CalculatrService/DivideResponse")]
+        System.Threading.Tasks.Task<double> DivideAsync(double x, double y);
+    }
+    
+
+    [System.CodeDom.Compiler.GeneratedCodeAttribute("System.ServiceModel", "4.0.0.0")]
+
+	//CalculatrServiceChannel
+    public interface CalculatrServiceChannel : Client.CalculatorService.CalculatrService, System.ServiceModel.IClientChannel {
+    }
+    
+    [System.Diagnostics.DebuggerStepThroughAttribute()]
+    [System.CodeDom.Compiler.GeneratedCodeAttribute("System.ServiceModel", "4.0.0.0")]
+
+	//CalculatrServiceClient
+    public partial class CalculatrServiceClient : System.ServiceModel.ClientBase<Client.CalculatorService.CalculatrService>, Client.CalculatorService.CalculatrService {
+        
+        public CalculatrServiceClient() {
+        }
+        
+        public CalculatrServiceClient(string endpointConfigurationName) : 
+                base(endpointConfigurationName) {
+        }
+        
+        public CalculatrServiceClient(string endpointConfigurationName, string remoteAddress) : 
+                base(endpointConfigurationName, remoteAddress) {
+        }
+        
+        public CalculatrServiceClient(string endpointConfigurationName, System.ServiceModel.EndpointAddress remoteAddress) : 
+                base(endpointConfigurationName, remoteAddress) {
+        }
+        
+        public CalculatrServiceClient(System.ServiceModel.Channels.Binding binding, System.ServiceModel.EndpointAddress remoteAddress) : 
+                base(binding, remoteAddress) {
+        }
+        
+        public double Add(double x, double y) {
+            return base.Channel.Add(x, y);
+        }
+        
+        public System.Threading.Tasks.Task<double> AddAsync(double x, double y) {
+            return base.Channel.AddAsync(x, y);
+        }
+        
+        public double Subtract(double x, double y) {
+            return base.Channel.Subtract(x, y);
+        }
+        
+        public System.Threading.Tasks.Task<double> SubtractAsync(double x, double y) {
+            return base.Channel.SubtractAsync(x, y);
+        }
+        
+        public double Multiply(double x, double y) {
+            return base.Channel.Multiply(x, y);
+        }
+        
+        public System.Threading.Tasks.Task<double> MultiplyAsync(double x, double y) {
+            return base.Channel.MultiplyAsync(x, y);
+        }
+        
+        public double Divide(double x, double y) {
+            return base.Channel.Divide(x, y);
+        }
+        
+        public System.Threading.Tasks.Task<double> DivideAsync(double x, double y) {
+            return base.Channel.DivideAsync(x, y);
+        }
+    }
+	}
+CalculatrService是服务端契约ICalculator的客户端的表示，CalculatrServiceChannel是继承System.ServiceModel.IClientChannel，后端定义了客户端信道的基本行为，CalculatrServiceClient最终用于服务访问的服务代理类，继承泛型基类ClientBase< Client.CalculatorService.CalculatrService > ,
+实现了服务契约，客户端对服务的访问，通过该类的实例进行。继承自ClientBase< Client.CalculatorService.CalculatrService >的CalculatrServiceClient，地址指定是通过其构造函数进行。   
+
+	 public CalculatrServiceClient(string endpointConfigurationName) : 
+                base(endpointConfigurationName) {
+        }
+        
+        public CalculatrServiceClient(string endpointConfigurationName, string remoteAddress) : 
+                base(endpointConfigurationName, remoteAddress) {
+        }
+        
+        public CalculatrServiceClient(string endpointConfigurationName, System.ServiceModel.EndpointAddress remoteAddress) : 
+                base(endpointConfigurationName, remoteAddress) {
+        }
+        
+        public CalculatrServiceClient(System.ServiceModel.Channels.Binding binding, System.ServiceModel.EndpointAddress remoteAddress) : 
+                base(binding, remoteAddress) {
+        }   
+ClientBase< TChannel >的部分定义：   
+	
+	public abstract class ClientBase<TChannel>
+	{
+	protected ClientBase();
+	protected ClientBase(string endpointConfigurationName);
+	protected ClientBase(ServiceEndpoint endpoint);
+	protected ClientBase(InstanceContext callbackInstance);  
+	protected ClientBase(string endpointConfigurationName, string remoteAddress);
+	protected ClientBase(string endpointConfigurationName, EndpointAddress remoteAddress);   
+	protected ClientBase(Binding binding, EndpointAddress remoteAddress);  
+	protected ClientBase(InstanceContext callbackInstance, string endpointConfigurationName);  
+	protected ClientBase(InstanceContext callbackInstance, ServiceEndpoint endpoint);  
+	protected ClientBase(InstanceContext callbackInstance, Binding binding, EndpointAddress remoteAddress);
+	protected ClientBase(InstanceContext callbackInstance, string endpointConfigurationName, EndpointAddress remoteAddress);
+	protected ClientBase(InstanceContext callbackInstance, string endpointConfigurationName, string remoteAddress);
+	}  
+Client< TChannel >是客户端进行服务调用的服务代理基类。ClientBase< TChannel >提供一系列重载构造函数，去指定终结点的3要素（地址，绑定，契约），对于双工通信（Duplex）的情况，通过InstanceContent回调实例实现从服务端对客户端操作的回调。  
+当没有显式地在构造函数中指定终结点要素的情况，默认从配置中读取。例如：   
+
+	class Program
+    {
+        static void Main(string[] args)
+        {
+            CalculatrServiceClient client=new CalculatrServiceClient("WSHttpBinding_CalculatrService");
+            Console.WriteLine("x+y={2},when x={0},y={1}",1,2,client.Add(1,2));
+            Console.WriteLine("x-y={2},when x={0},y={1}", 1, 2, client.Subtract(1, 2));
+            Console.WriteLine("x*y={2},when x={0},y={1}", 1, 2, client.Multiply(1, 2));
+            Console.WriteLine("x/y={2},when x={0},y={1}", 1, 2, client.Divide(1, 2));
+            Console.ReadKey();
+        }
+    }
+客户端在使用CalculatrServiceClient类实例化时，并没有通过构造函数指定终结点的三要素，会从配置文档中读取，配置文档内容：  
+	
+	<client>
+            <endpoint address="http://127.0.0.1:9999/calculatorservice" binding="wsHttpBinding"
+                bindingConfiguration="WSHttpBinding_CalculatrService" contract="CalculatorService.CalculatrService"
+                name="WSHttpBinding_CalculatrService">
+                <identity>
+                    <userPrincipalName value="DESKTOP-VG1IL9U\lenovo" />
+                </identity>
+            </endpoint>
+        </client>   
+   
+配置文档中，终结点的三要素均已指定，还添加有Name属性,这样构造函数中通过终结点的名称，实现服务代理对象的创建。如果基于服务契约的终结点在配置中是唯一的，那么构造函数可以不传递任何参数。因此对于上面客户端的创建：  
+	
+	CalculatrServiceClient client=new CalculatrServiceClient();   
+
+也能完成客户端服务代理对象的创建    
+
+- **通过ChannelFactory<TChannel>指定地址**   
+
+当创建继承自ClientBase< TChannel >的客户端服务代理对象时，调用某个服务的时候，实际上是调用基类(ClientBase< TChannel >)的Channel属性的对应方法实现的  
+
+	public double Add(double x, double y) {
+    	return base.Channel.Add(x, y);
+    	}
+
+基类中的Channel属性实际上是通过WCF客户端框架的另一个重要对象创建的，即ChannelFactory< TChannel >,TChannel一般是服务契约类型。ChannelFactory< TChannel >不仅为ClientBase< TChannel >服务，同时也可以单独使用。通过ChannelFactory< TChannel >直接创建服务代理对象。 ChannelFactory< TChannel >的部分定义：  
+	
+	public class ChannelFactory<TChannel>{
+	public ChannelFactory();  
+	public ChannelFactory(string endpointConfigurationName);  
+	public ChannelFactory(Binding binding);  
+	public ChannelFactory(ServiceEndpoint endpoint); 
+	public ChannelFactory(string endpointConfigurationName, EndpointAddress remoteAddress);  
+	public ChannelFactory(Binding binding, string remoteAddress);  
+	public ChannelFactory(Binding binding, EndpointAddress remoteAddress);  
+	protected ChannelFactory(Type channelType);
+	public static TChannel CreateChannel(Binding binding, EndpointAddress endpointAddress);
+	public static TChannel CreateChannel(Binding binding, EndpointAddress endpointAddress, Uri via);
+	}   
+ChannelFactory< TChannel >和ClientBase< TChannel >具有类似的重载构造函数，指定终结点的三要素。如果将终结点的信息通过配置的方式给出，在进行ChannelFactory< TChannel >的构造函数时，直接传入终结点的名称的字符串   
+	
+	var channel = new ChannelFactory<ICommunicationContract>("wcfDemo");
+    var client = channel.CreateChannel();  
+
+**AddressHeader的指定**  
+这里先看看EndpointAdress的定义   
+
+	public class EndpointAddress{
+	public Uri Uri { get; }
+	public AddressHeaderCollection Headers { get; }
+	public EndpointIdentity Identity { get; }
+	}
+
+AddressHeader定义在System.ServiceModel.Channels命名空间下，表示用于消息寻址相关的信息的报头，通过AddressHeader的静态方法CreatAddressHeader可以创建AddressHeader对象，除了AddressHeader类型，在System.ServiceModel.Channels命名空间下定义AddressHeaderCollection对象，表示AddressHeader的集合，继承自ReadOnlyCollection< AddressHeader >,该集合为只读集合。EndpointAddress的Headers属性的类型为AddressHeaderCollection，该属性为只读属性，所以不能通过该属性其EndpointAddress添加AddressHeader。   
+
+**为服务指定AddressHeader**  
+对服务进行寄宿时，可以通过代码和配置为EndpointAddress添加相应的AddressHeader。
+
+![](http://i.imgur.com/yaynFQH.png)  
+
+示例代码中，为确定受访者类型，购买服务的用户（Licensed user）和免费试用的用户（Trivial User）,添加一个Name为UserType的AddressHeader,NameSpace为 http://www.artech.com/。目的是让这个终结点只能为第一类用户提供服务，将AddressHeader的Value设为Licensed User。通过AddressHeader.CreateAddressHeader静态方法创建AddressHeader对象，传入EndpointAddress的构造函数创建EndpointAddress对象，再创建ServiceEndpoint对象，添加到服务宿主的终结点中。  
+通过配置的方式与之前类似，定义在< headers >的配置项中，指定Name，NameSpace,Value，与上面的等效配置如下 ： 
+
+![](http://i.imgur.com/AUAXMIt.png)   
+
+客户端同样通过代码和配置的方式对AddressHeader进行设定，采用配置的方式设定：   
+
+![](http://i.imgur.com/hUNb2jh.png)  
+**由于在服务端为服务的终结点指定了AddressHeader，意味着该终结点只接受消息的报头与该AddressHeader相匹配的消息请求。
+**
+
+	
