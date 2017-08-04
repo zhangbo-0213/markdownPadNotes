@@ -710,7 +710,34 @@ AddressHeader定义在System.ServiceModel.Channels命名空间下，表示用于
 
 ----------
 **5.端口共享**    
-对于WCF来说，当对某个服务进行寄宿的时候，一个端口会被独占使用。例如使用两个控制台程序对两个服务Service1和Service2进行寄宿，两个服务的终结点地址设置为同一个，先后运行这两个服务寄宿的控制台程序时，第一个能正常运行，第二个则会报错，提示端口已经用于网络监听。
+对于WCF来说，当对某个服务进行寄宿的时候，一个端口会被独占使用。例如使用两个控制台程序对两个服务Service1和Service2进行寄宿，两个服务的终结点地址设置为同一个，先后运行这两个服务寄宿的控制台程序时，第一个能正常运行，第二个则会报错，提示端口已经用于网络监听。    
+当将某个服务寄宿于一个进程中，实际是通过该进程监听和处理来自客户端的Socket请求。一般情况下，一个端口被一个监听进程独占使用，如果部署了若干服务，这些服务寄宿于不同的应用程序中，那么监听的端口必须不同。
+对于WCF寄宿的端口共享，采用不同的传输协议，有不同的解决方案。  
+
+**基于HTTP/HTTPS的端口共享**   
+HTTP/HTTPS最为常见的是80|443端口共享，对于WCF来说，基于80|443端口共享仅限于采用IIS寄宿方式的服务。如果采取自我寄宿的方式，80|443端口是不可用的。  
+
+**基于TCP的端口共享** 
+IIS只能接受基于HTTP的服务寄宿方式，如果采用TCP的服务，需要通过其他的寄宿方式。Windows提供Net.TCP端口共享服务来实现基于TCP的端口共享。WCF对Net.TCP端口共享服务提供原生支持，原理图：  
+
+![](http://i.imgur.com/fubb3Gi.png)   
+
+服务客户端proxy1和proxy2，分别调用Service1和Service2，当基于各自服务调用的socket连接请求抵达目标主机时，Net.TCP端口共享服务会截获请求消息，并获取目的地址。根据该地址，结合内部维护的目的地址和目标进程匹配列表，得到对应的目标应用程序，并将请求消息转发给真正的服务程序。
+WCF下基于TCP的端口共享建立在Net.TCP Port Sharing Service Windows服务上的。默认情况下，该服务需要手动开启。
+“开始”-->"控制面板"-->"管理工具"-->"服务"，定位到Net.TCP Port Sharing Service. 
+在基于TCP的WCF通信中，NetTcpBinding实现了通信的细节，包括端口的共享。在NetTcpBinding，定义了一个特殊属性，PortSharingEnabled,表明是否启用端口共享机制。如果启用，需要设置该属性：  
+
+	using（ServiceHost serviceHost = new ServiceHost(typeof(Service1))）{
+		NetTcpBinding binding=new NetTcpBinding();
+		binding.PortSharingEnabled=true;
+		serviceHost.AddServiceEndpoint(typeof(IService1),binding,"net.tcp://127.0.0.1:9999/service1");
+		serviceHost.Open();
+		Console.Read();
+	}   
+也可以通过配置进行启用端口共享机制： 
+
+![](http://i.imgur.com/7SmihKm.png) 
+
 
 
 	
