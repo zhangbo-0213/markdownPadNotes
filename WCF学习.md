@@ -706,7 +706,6 @@ AddressHeader定义在System.ServiceModel.Channels命名空间下，表示用于
 客户端同样通过代码和配置的方式对AddressHeader进行设定，采用配置的方式设定：   
 
 ![](http://i.imgur.com/hUNb2jh.png)  
-**由于在服务端为服务的终结点指定了AddressHeader，意味着该终结点只接受消息的报头与该AddressHeader相匹配的消息请求。
-**
+**由于在服务端为服务的终结点指定了AddressHeader，意味着该终结点只接受消息的报头与该AddressHeader相匹配的消息请求。**
 
 	
