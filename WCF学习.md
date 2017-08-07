@@ -717,14 +717,15 @@ AddressHeader定义在System.ServiceModel.Channels命名空间下，表示用于
 **基于HTTP/HTTPS的端口共享**   
 HTTP/HTTPS最为常见的是80|443端口共享，对于WCF来说，基于80|443端口共享仅限于采用IIS寄宿方式的服务。如果采取自我寄宿的方式，80|443端口是不可用的。  
 
-**基于TCP的端口共享** 
+**基于TCP的端口共享**   
 IIS只能接受基于HTTP的服务寄宿方式，如果采用TCP的服务，需要通过其他的寄宿方式。Windows提供Net.TCP端口共享服务来实现基于TCP的端口共享。WCF对Net.TCP端口共享服务提供原生支持，原理图：  
 
 ![](http://i.imgur.com/fubb3Gi.png)   
 
-服务客户端proxy1和proxy2，分别调用Service1和Service2，当基于各自服务调用的socket连接请求抵达目标主机时，Net.TCP端口共享服务会截获请求消息，并获取目的地址。根据该地址，结合内部维护的目的地址和目标进程匹配列表，得到对应的目标应用程序，并将请求消息转发给真正的服务程序。
-WCF下基于TCP的端口共享建立在Net.TCP Port Sharing Service Windows服务上的。默认情况下，该服务需要手动开启。
-“开始”-->"控制面板"-->"管理工具"-->"服务"，定位到Net.TCP Port Sharing Service. 
+服务客户端proxy1和proxy2，分别调用Service1和Service2，当基于各自服务调用的socket连接请求抵达目标主机时，Net.TCP端口共享服务会截获请求消息，并获取目的地址。根据该地址，结合内部维护的目的地址和目标进程匹配列表，得到对应的目标应用程序，并将请求消息转发给真正的服务程序。    
+
+WCF下基于TCP的端口共享建立在Net.TCP Port Sharing Service Windows服务上的。    
+默认情况下，该服务需要手动开启。“开始”-->"控制面板"-->"管理工具"-->"服务"，定位到Net.TCP Port Sharing Service. 
 在基于TCP的WCF通信中，NetTcpBinding实现了通信的细节，包括端口的共享。在NetTcpBinding，定义了一个特殊属性，PortSharingEnabled,表明是否启用端口共享机制。如果启用，需要设置该属性：  
 
 	using（ServiceHost serviceHost = new ServiceHost(typeof(Service1))）{
@@ -736,8 +737,61 @@ WCF下基于TCP的端口共享建立在Net.TCP Port Sharing Service Windows服�
 	}   
 也可以通过配置进行启用端口共享机制： 
 
-![](http://i.imgur.com/7SmihKm.png) 
+![](http://i.imgur.com/7SmihKm.png)    
 
+----------
+**6.WCF寻址（Addressing）**  
+WCF通过创建不同的终结点，实现基于不同传输协议的通信方式。对于通信来讲，首先要解决的是寻址（Addressing）问题，基于消息的通信方式首先要知道消息该发往何处。  
 
+- **服务的角色**  
 
-	
+在具体一个服务调用中，客户端和服务端准确来说是服务的消费者和服务的提供者。在一个服务场景中，若为别人提供某种功能的实现调用，则为服务提供者；若该服务需要调用其他服务完成某项功能，则它为服务的消费者。服务的消费者向服务提供者发送消息请求。  
+
+![](http://i.imgur.com/GHq0FxV.png)
+
+除了服务的消费者和服务提供者外，有时候服务还具有第三种角色：中介服务。中介服务不提供具体业务功能的实现，而是将收到的服务请求转发给最终服务提供者。   
+
+![](http://i.imgur.com/JCXYV49.png)    
+
+- **逻辑地址&物理地址**  
+
+WCF中，每个终结点包含两个不同地址：逻辑地址和物理地址。以终结点Address属性表示的地址为**逻辑地址**。从**消息发送端来** 讲，**物理地址**是消息被真正发送的目的地址，从**消息接收端** 来讲，**物理地址**是监听器真正监听的地址。逻辑地址和物理地址分别对应To和Via。 
+
+**服务端逻辑地址与物理地址**  
+对于消息的接收方的终结点来说，物理地址就是监听地址，通过ServiceEndpoint的ListenUri属性表示。  
+
+![](http://i.imgur.com/s0NWPKu.png)
+
+对服务进行寄宿的时候，可以调用ServiceHost的AddressEndpoint对应的重载方法为终结点指定ListenUri。例如：为终结点指定不同于逻辑地址的物理地址。
+
+![](http://i.imgur.com/5z1tlGr.png)   
+
+ListenUri也能通过配置方式指定：   
+
+![](http://i.imgur.com/DabPcMf.png)  
+
+**客户端逻辑地址与物理地址**     
+于消息发送端来说，物理地址就是消息发送的真正目的地址。该地址通过特殊的终结点行为（EndpointBehavior）来指定：ClientViaBehavior。ClientViaBehavior定义的URI表示该物理地址。ClientViaBehavior通过相应的配置应用到WCF客户端。通过viaURI设置不同于逻辑地址的物理地址。   
+
+![](http://i.imgur.com/yxiY0VV.png)
+
+- **消息筛选**
+在WCF的消息分发系统中ChannelDispatcher（信道分发器）和ChannelListener（信道监听器）对象经常会被用到。  
+
+**连接请求的监听**
+
+当服务被成功寄宿时，WCF在服务端创建一个或多个监听器，用于服务调用请求的监听。例如，为CalculatorService添加三个BasicHttpBinding的终结点，为其中两个终结点指定一个不同于终结点地址的监听地址（物理地址），第三个终结点的监听地址（物理地址）与逻辑地址共享相同的地址。（默认情况下，监听地址与逻辑地址相同）	。对应配置：
+
+![](http://i.imgur.com/ecrFqvL.png)	 
+
+当前一个服务，3个终结点，2个监听地址。当服务成功寄宿时，WCF创建两个ChannelDispatcher(信道分发器)对象，每个信道分发器有自己的信道监听器(ChannelListener)，分别绑定到监听地址对应的端口进行服务调用请求的监听。WCF还会创建3个EndpointDispatcher（终结点分发器），当信道分发器通过信道监听接收到消息，根据消息自身选择终结点分发器。这种根据消息选择终结点分发器的选择机制叫做**消息筛选**。关系图为：  
+
+![](http://i.imgur.com/ml7Vx86.png)   
+
+**EndpointDispatcher的选择和消息的分发**   
+在WCF消息监听与发布中，ChannelDisPatcher(信道分发器)和EndpointDispatcher（终结点分发器）是两个核心对象。信道分发器监听请求和接收消息，分发给相应终结点分发器，由终结点分发器最终完成消息的处理。消息筛选解决对终结点的选择问题，消息筛选依赖于**终结点分发器** 的两个对象 **Addressfilter** 和 **Contractfilter**,从名称可以看出，分别对终结点的地址和契约进行筛选。 
+**Addressfliter** 和 **Contractfliter** 是同一种类型：System.ServiceModel.Dispatcher.MessageFileter,定义两个Match重载方法，来判断拥有MessageFilter的EndpointDispatcher是否和接收的消息相匹配。  
+
+![](http://i.imgur.com/dBYOcVg.png)   
+
+当ChannelDispatcher接收到客户端的请求消息时，遍历属于自己的EndpointDispatcher列表，获取它们的MessageFilter:Addressfilter和Contractfilter，将**消息对象**传入Match方法。若返回值为True，则该EndpointDispatcher为该消息的真正目标终结点。
