@@ -794,4 +794,176 @@ ListenUri也能通过配置方式指定：
 
 ![](http://i.imgur.com/dBYOcVg.png)   
 
-当ChannelDispatcher接收到客户端的请求消息时，遍历属于自己的EndpointDispatcher列表，获取它们的MessageFilter:Addressfilter和Contractfilter，将**消息对象**传入Match方法。若返回值为True，则该EndpointDispatcher为该消息的真正目标终结点。
+当ChannelDispatcher接收到客户端的请求消息时，遍历属于自己的EndpointDispatcher列表，获取它们的MessageFilter:Addressfilter和Contractfilter，将**消息对象**传入Match方法。若返回值为True，则该EndpointDispatcher为该消息的真正目标终结点。  
+
+
+----------
+
+**7.绑定与信道栈**    
+WCF在基础架构的层次架构上分为两个部分：服务模型层（Service Model）和信道层（Channel Layer）。服务模型层建立在信道层之上，提供统一，可扩展的编程模型。信道层是通过绑定创建的信道栈为消息通信提供传输、处理的通道。信道栈是由承载不同功能的信道组合而成。    
+绑定在两个部分中扮演中间人角色。    
+在服务端，WCF通过服务终结点的绑定创建一个或多个信道监听器，绑定到监听端口进行请求监听。    
+在客户端，通过绑定创建信道工厂，借助信道工厂创建的服务代理对象进行服务的请求和调用。
+
+**实例：通过绑定进行消息通信**
+整个解决方案由两个Console应用程序组成，分别模拟消息的监听端和请求端。   
+**Step1:创建请求监听端应用程序**  
+
+	namespace Listener
+	{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            //创建监听地址和绑定
+            Uri listenUri=new Uri("http://localhost:9999/listener");
+            Binding binding=new BasicHttpBinding();
+            //通过监听地址创建信道监听器
+            IChannelListener<IReplyChannel> channelListener = binding.BuildChannelListener<IReplyChannel>(listenUri);
+            //开启信道监听器
+            channelListener.Open();
+
+            //通过信道监听器对象创建回复信道对象
+            IReplyChannel channel = channelListener.AcceptChannel(TimeSpan.MaxValue);
+            //开启回复信道
+            channel.Open();
+
+            Console.WriteLine("开始监听...");
+
+            while (true)
+            {
+                //通过回复信道创建请求文本对象
+                RequestContext requestContext = channel.ReceiveRequest(TimeSpan.MaxValue);
+                //输出请求文本对象里存储的从请求端发送的请求信息
+                Console.WriteLine("接收到请求消息：\n{0}",requestContext.RequestMessage);
+                //通过请求文本对象的Reply()方法向请求端发送回复信息
+                requestContext.Reply(CreateReplyMessage(binding));
+            }
+        }
+
+        static Message CreateReplyMessage(Binding binding)
+        {
+            string action = "urn:zhangbo/reply";
+            string body = "这是一个简单的回复消息";
+
+            return Message.CreateMessage(binding.MessageVersion, action, body);
+        }
+    }
+	}  
+
+**Step2:创建请求发送端应用程序**   
+
+	namespace Sender
+	{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            //创建请求的目的地址和绑定
+            Uri listenUri=new Uri("http://localhost:9999/listener");
+            Binding binding=new BasicHttpBinding();
+            //通过绑定创建信道工厂
+            IChannelFactory<IRequestChannel> channelFactory = binding.BuildChannelFactory<IRequestChannel>();
+            //开启信道工厂
+            channelFactory.Open();
+
+            //通过信道工厂创建请求信道，传入终结点地址对象
+            IRequestChannel channel = channelFactory.CreateChannel(new EndpointAddress(listenUri));
+            //开启请求信道
+            channel.Open();
+
+            //通过请求信道发送请求，并接受请求回复信息
+            Message replyMessage = channel.Request(CreateRequestMessage(binding));
+            //输出请求回复信息
+            Console.WriteLine("接收到回复消息\n{0}",replyMessage);
+            Console.Read();
+            }
+
+        static Message CreateRequestMessage(Binding binding)
+        {
+            string action = "urn:zhangbo/request";
+            string body = "这是一个简单的请求消息！";
+
+            return Message.CreateMessage(binding.MessageVersion,action,body);
+        }
+    }
+	}   
+
+**执行结果：**  
+请求监听端：  
+
+![](http://i.imgur.com/RNh3TkE.png)   
+
+请求发送端：  
+
+![](http://i.imgur.com/FRnr0R7.png)   
+
+**WCF的绑定模型**    
+在整个绑定模型中，最底层的是信道和信道栈。不同功能的信道组成信道栈（消息通信的通道），根据功能信道可分为三类：
+
+- **传输信道（Transport Channel）**  
+传输信道实现基于某种网络协议（HTTP、HTTPS、TCP等）的消息传输
+
+- **消息编码信道（Encoding Channel）**   
+消息编码信道实现对消息的编码，常见消息编码方式有：Text/XML、Binary和MTOM  
+
+- **协议信道（ProtocolChannel）**  
+协议信道实现WCF对WS-*协议的支持，如WS-Security、WS-RM、WS-AT   
+  
+WCF中，信道是通过信道管理器创建（信道监听器和信道工厂都是信道管理器），服务端的信道管理器作用在于创建信道栈监听请求，接收消息，称为**信道监听器**，而客户端的信道管理器在于创建信道进行消息请求的发送和回复消息的接收，所以称为**信道工厂**，而信道管理器都会由一个绑定实例进行创建，上述关系可以由以下关系图表示： 
+
+![](http://i.imgur.com/FtlL2sg.png)   
+
+**绑定编程**  
+对于WCF来说，客户端和服务端实现通信是通过终结点进行。作为终结点的三要素之一，绑定实现消息的通信细节。终结点的创建过程中，必须指定相应的绑定。  
+
+- **服务端对绑定的指定**   
+服务端在自我寄宿时，会创建ServiceHost对象，通过ServiceHost.AddServiceEndpoint方法对终结点进行添加，AddServiceEndpoint要求传入指定的Binding对象，定义在ServiceHost和ServiceHostBase中的AddServiceEndpoint方法： 
+
+![](http://i.imgur.com/jgBykMt.png)  
+
+为CalculatorService服务添加3个终结点，3个终结点分别对应各自地址的绑定类型：BasicHttpBinding、WsHttpBinding、NetTcpBinding   
+
+![](http://i.imgur.com/XE0oGdO.png)     
+
+终结点的配置也可以通过WCF配置完成，绑定在对应的设置过程中进行设置。  
+
+- **客户端对绑定的指定**    
+客户端是服务的调用端，服务调用有两种方式，一种是通过代码生成工具或者添加服务引用，第二种是通过ChannelFactory< TChannel >进行创建服务代理对象。  
+
+第一种方式生成继承自System.ServiceModel.ClientBase<TChannel>的子类，该子类的实例对象即为服务的代理对象，在构造过程中，可以通过其构造方法进行对绑定的指定。   
+
+第二种方式直接通过ChannelFactory< TChannel >创建服务代理对象或是信道栈，其构造方法指定传入相应绑定对象。    
+
+两种方式都可以通过配置的方式去指定绑定，当代码中没有指定终结点的三要素时，会采取配置中的配置内容。  
+
+**消息交换与信道形状**   
+在SOA中，消息交换模式（MEP）代表一系列模板，定义了消息的发送者和接受者相互进行**消息传输的次序**。 典型的消息交换模式包括3种：数据报模式（Datagram）、请求/恢复模式(Request/Reply)及双工模式（Duplex）。  
+
+
+- **数据报模式（Datagram）**   
+数据报模式是最简单的消息交换模式，也叫做发送/遗忘或单向模式。数据报模式基于从一个源到一个或多个目的地的**单向消息传输**。 数据报模式的一些变型：  
+
+- 单目的地模式   
+一个消息的发送方将消息发送给单一接收方
+- 多投模式   
+一个消息发送方将消息发送给一系列预定义的接收方   
+- 广播模式    
+和多投模式类似，接收方的范围更加广泛     
+数据报模式一般采用**异步**的消息发送模式，**并不希望接收到对方的回复消息**  个别情况下，甚至不关系消息能否被正常接收。  
+
+- **请求/回复模式（Request/Reply）**   
+该模式是使用的最多的模式。这种模式下，消息发送方将消息发送给接收方等待对方回复。请求/回复模式一般采用同步通信方式。   
+
+- **双工模式（Duplex）**  
+双工模式下，消息在交换过程中，任何一方都可以向对方发送消息。双工通信可以使服务端回调客户端。比较典型的双工通信是订阅/发布模式。订阅/发布模式下消息交换的双方从发送方和接收方变成了订阅方和发布方。 
+
+消息的交换依赖网络传递，不同的网络传输协议对双工通信具有不同的支持方式。TCP其协议本身就是全双工的网络通信协议，提供双工通信的原生支持。HTTP本身是基于请求/回复的网络协议，不支持双工通信。WCF通过WsDualHttpBinding实现基于HTTP的双工通信，实际是采用两个HTTP通道实现的。
+
+
+
+
+
+
+
+
