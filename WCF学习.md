@@ -775,7 +775,7 @@ ListenUri也能通过配置方式指定：
 
 ![](http://i.imgur.com/yxiY0VV.png)
 
-- **消息筛选**
+- **消息筛选**   
 在WCF的消息分发系统中ChannelDispatcher（信道分发器）和ChannelListener（信道监听器）对象经常会被用到。  
 
 **连接请求的监听**
