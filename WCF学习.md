@@ -832,7 +832,7 @@ WCF在基础架构的层次架构上分为两个部分：服务模型层（Servi
 
             while (true)
             {
-                //通过回复信道创建请求文本对象
+                //通过回复信道创建请求文本对象接收请求内容
                 RequestContext requestContext = channel.ReceiveRequest(TimeSpan.MaxValue);
                 //输出请求文本对象里存储的从请求端发送的请求信息
                 Console.WriteLine("接收到请求消息：\n{0}",requestContext.RequestMessage);
@@ -950,7 +950,7 @@ WCF中，信道是通过信道管理器创建（信道监听器和信道工厂�
 一个消息发送方将消息发送给一系列预定义的接收方   
 - 广播模式    
 和多投模式类似，接收方的范围更加广泛     
-数据报模式一般采用**异步**的消息发送模式，**并不希望接收到对方的回复消息**  个别情况下，甚至不关系消息能否被正常接收。  
+数据报模式一般采用**异步**的消息发送模式，**并不希望接收到对方的回复消息**  个别情况下，甚至不关心消息能否被正常接收。  
 
 - **请求/回复模式（Request/Reply）**   
 该模式是使用的最多的模式。这种模式下，消息发送方将消息发送给接收方等待对方回复。请求/回复模式一般采用同步通信方式。   
@@ -960,8 +960,150 @@ WCF中，信道是通过信道管理器创建（信道监听器和信道工厂�
 
 消息的交换依赖网络传递，不同的网络传输协议对双工通信具有不同的支持方式。TCP其协议本身就是全双工的网络通信协议，提供双工通信的原生支持。HTTP本身是基于请求/回复的网络协议，不支持双工通信。WCF通过WsDualHttpBinding实现基于HTTP的双工通信，实际是采用两个HTTP通道实现的。
 
+**信道形状**   
+不同消息交换模式下，管道在消息发送端和接收端作用不同。   
 
+- **数据报模式下**  
+发送端信道栈作用：输出数据   
+接收端信道栈作用：输入数据    
 
+- **请求/回复模式下**  
+发送端信道栈作用：发送消息请求   
+接收端信道栈作用：接收和回复消息请求   
+
+- **双工模式下**  
+消息双方完全等价，均具有输入和输出的功能  
+
+WCF通过**信道形状（Channel Shape）**来表述不同消息模式下消息交换双方信道的不同要求。信道形状按照消息交换模式的不同，将信道进行如下分类（WCF为信道定义一系列接口）：   
+
+![](http://i.imgur.com/a1NqiPJ.png)
+ 
+接口之间层次结构：  
+
+![](http://i.imgur.com/TvX2QrH.png)
+
+**案例：自定义信道**    
+自定义信道的方法和属性，仅仅通过System.Console在控制台打印方法和属性名称，可以通过自身需求进行扩展。静态打印类及打印方法：
+
+	public static class PrintHelper
+    {
+        public static void Print(object instance,string method)
+        {
+            Console.WriteLine("{0}.{1}",instance.GetType().Name,method);
+        }
+    }
+  
+自定义请求信道SimpleRequestChannel实现IRequest接口，并直接继承自ChannelBase。  
+
+	namespace CustomChannel
+	{
+    public class SimpleRequestChannel:ChannelBase,IRequestChannel
+    {
+        private IRequestChannel _innerChannel;
+
+        public SimpleRequestChannel(ChannelManagerBase channelManager, IRequestChannel innnerChannel):base(channelManager)
+        {
+            PrintHelper.Print(this,"SimpleRequestChannel");
+            this._innerChannel = innnerChannel;
+        }
+
+        protected override void OnAbort()
+        {
+            PrintHelper.Print(this,"OnAbort");
+            this._innerChannel.Abort();
+        }
+
+        protected override void OnClose(TimeSpan timeout)
+        {
+            PrintHelper.Print(this, "OnClose");
+            this._innerChannel.Close(timeout);
+        }
+
+        protected override void OnEndClose(IAsyncResult result)
+        {
+            PrintHelper.Print(this, "OnEndClose");
+            this._innerChannel.EndClose(result);
+        }
+
+        protected override IAsyncResult OnBeginClose(TimeSpan timeout, AsyncCallback callback, object state)
+        {
+            PrintHelper.Print(this, "OnBeginClose");
+            return this._innerChannel.BeginClose(timeout,callback,state);
+        }
+
+        protected override void OnOpen(TimeSpan timeout)
+        {
+            PrintHelper.Print(this, "OnOpen");
+            this._innerChannel.Open(timeout);
+        }
+
+        protected override IAsyncResult OnBeginOpen(TimeSpan timeout, AsyncCallback callback, object state)
+        {
+            PrintHelper.Print(this, "OnBeginOpen");
+            return this._innerChannel.BeginOpen(timeout, callback, state);
+        }
+
+        protected override void OnEndOpen(IAsyncResult result)
+        {
+            PrintHelper.Print(this, "OnEndOpen");
+            this._innerChannel.EndOpen(result);
+        }
+
+        #region IRequestChannel Members
+        public Message Request(Message message)
+        {
+            PrintHelper.Print(this,"Request");
+            return this._innerChannel.Request(message);
+        }
+
+        public Message Request(Message message, TimeSpan timeout)
+        {
+            PrintHelper.Print(this, "Request");
+            return this._innerChannel.Request(message,timeout);
+        }
+
+        public IAsyncResult BeginRequest(Message message, AsyncCallback callback, object state)
+        {
+            PrintHelper.Print(this,"BeginReques");
+            return this._innerChannel.BeginRequest(message,callback,state);
+        }
+
+        public IAsyncResult BeginRequest(Message message, TimeSpan timeout, AsyncCallback callback, object state)
+        {
+            PrintHelper.Print(this,"BeginRequest");
+            return this._innerChannel.BeginRequest(message, timeout,callback, state);
+        }
+
+        public Message EndRequest(IAsyncResult result)
+        {
+            PrintHelper.Print(this,"EndRequest");
+            return this._innerChannel.EndRequest(result);
+        }
+
+        public EndpointAddress RemoteAddress {
+            get
+            {
+              PrintHelper.Print(this,"RemoteAddress");
+              return this._innerChannel.RemoteAddress;
+            } 
+        }
+        public Uri Via {
+            get
+            {
+                PrintHelper.Print(this,"Via");
+                return this._innerChannel.Via;
+            }
+        }
+
+        #endregion
+    }
+	}
+
+信道自身不能孤立存在，存在于一个或多个信道对象连接而成的信道栈中。因此，对于不在栈尾的信道来说，处理完消息，一般会把处理后的消息传递给下一个信道。反映在方法上，需要执行当前信道的某个方法后，获取下一个信道对象，调用同名方法。  
+
+自定义回复信道与自定义请求信道类似，实现IReplyChannel接口，直接继承自ChannelBase。  
+
+自定义的信道完成后，并不能直接通过信道管理器创建自定义信道对象，还需要对信道管理器进行自定义。
 
 
 
