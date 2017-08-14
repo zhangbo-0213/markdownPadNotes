@@ -256,7 +256,7 @@ XAML的标签声明的是对象，一个XAML标签会对应一个对象，这个
             string str = this.FindResource("myString") as string;
             this.textBox1.Text = str;
         }  
-点击Button按钮效果： 
+点击Button按钮效果：     
 ![](http://i.imgur.com/sZn80C6.png)  
 - **x:Shared**   
 与x:key配合使用，如果x:Shared的值为true,检索到该对象时得到的都是同一个对象（类似C#引用类型变量）,如果x:Shared的值为false，则每次检索得到的对象是新的副本（类似C#的数值类型变量），默认是true。  
