@@ -277,5 +277,179 @@ Pixely=（1/2 * Yndc+1/2） * pixelHeight
 **Ta(T)(Ma-b(T)G)Na**=0 
 
 **(T)表示转置**
-由于**TaNa**=0,**Ta**,**Na**均为方向矢量，即**Ma-b(T)G**=**I** 此时可以满足垂直要求，**G**=**Ma-b(T)**的逆矩阵，即**G**是**Ma-b**的转置逆矩阵。若**Ma-b**为正交矩阵，则**G**=**Ma-b**，也就是直接使用Ma-b进行法线的变换就可以保证变换后的垂直要求。  
-如果变换只包含旋转变换，那么**Ma-b**是正交矩阵，或者这包含旋转和统一缩放，那么统一变换系数为k,则**G**=1/k(**Ma-b**),但如果变换中包含了非统一变换，则**G**必须通过**Ma-b**的转置逆矩阵进行求解。
+由于**TaNa**=0,**Ta**,**Na**均为方向矢量，即**Ma-b(T)G**=**I** 此时可以满足垂直要求，**G**=**Ma-b(T)** 的逆矩阵，即**G**是**Ma-b** 的转置逆矩阵。若**Ma-b**为正交矩阵，则**G**=**Ma-b**，也就是直接使用Ma-b进行法线的变换就可以保证变换后的垂直要求。  
+如果变换只包含旋转变换，那么**Ma-b**是正交矩阵，或者这包含旋转和统一缩放，那么统一变换系数为k,则**G**=1/k(**Ma-b**),但如果变换中包含了非统一变换，则**G** 必须通过 **Ma-b** 的转置逆矩阵进行求解。   
+
+### 顶点/片元着色器基本结构 ###
+Unity Shader基本结构包含：Shader、Properties、SubShader、Fallback，即：  
+
+	Shader "MySahder"{
+		//属性部分，使材质面板可见
+		Properties{
+		}
+		
+		//SubShader A  
+		SubShader{
+			//通道Pass
+			Pass{
+			//设置渲染状态及标签
+
+			//开始CG代码片段  
+			CGPROGRAM  
+			//该代码段的编译指令
+			#pragma vertex vert   //指定顶点着色器函数
+			#pragma fragment frag  //指定片元着色器函数
+
+			//CG代码计算部分
+
+			ENDCG
+			//其他设置			
+			}
+
+			//其他通道Pass
+		}
+
+		//SubShader B  
+		SubShader{
+		
+		}
+		
+		//回滚操作  
+		Fallback"VertexLit"
+	}
+比较重要的是Pass块内的内容  
+
+**第一个Shader**   
+
+	Shader "Custom/Chapter5_SimpleShader" {
+	SubShader{
+		Pass{
+		CGPROGRAM 
+		#pragma vertex vert
+		#pragma fragment frag  
+
+		float4 vert(float4 v: POSITION) : SV_POSITION{
+			return mul(UNITY_MATRIX_MVP,v);
+		}
+
+		fixed4 frag() : SV_Target{
+			return fixed4(1.0,1.0,1.0,1.0);
+		}
+
+		ENDCG
+	}
+	}
+	FallBack "Diffuse"
+	}  
+
+
+**vert** 函数的输入v包含顶点位置，通过**POSITION**语义指定  
+
+**POSITION** 将模型的顶点坐标填充到输入参数v中   
+**SV_POSITION** 顶点着色器的输出是裁剪空间中顶点坐标       
+**SV_Target** 将用户的输出颜色存储到一个渲染目标中，这里会输出到默认的帧缓存
+
+**POSITION** 和 **SV_POSITION** 均为CG/HLSL中的语义，语义告诉系统输入哪些值，输出哪些值，输出到哪里 
+
+**通过语义获得更多模型数据**   
+**TEXCOORD0**：使用模型第一套纹理坐标填充texcoord变量，纹理坐标可以用来访问纹理  
+**NORMAL**：获得法线方向，用于计算光照   
+
+			//通过一个结构体定义顶点着色器的输入
+		struct a2v {
+		    //使用POSITION语义，将模型空间的顶点坐标填充至vertex
+			float4 vertex:POSITION;
+			//使用NORMAL语义，将模型空间的顶点法线填充至normal（由于是矢量，这里使用float3）
+			float3 normal:NORMAL;
+			//使用TEXCOORD0语义，将模型的第一套纹理坐标填充texcoord变量
+			float4 texcoord:TEXCOORD0;
+		};  
+
+创建自定义结构体语法：  
+
+	struct StructName{
+		Type Name:语义;
+		Type Name:语义;
+		Type Name:语义;
+	};   
+
+填充到这些语义中的数据来自于模型的**Mesh Render**组件，每帧调用DrawCall时，Mesh Render组件会将负责渲染的模型的数据发给Unity。  
+
+使用更加丰富的语义，获得模型更多信息：  
+
+	Shader "Custom/Chapter5_SimpleShader" {
+	SubShader{
+		Pass{
+		CGPROGRAM 
+		#pragma vertex vert
+		#pragma fragment frag  
+
+		//通过一个结构体定义顶点着色器的输入
+		struct a2v {
+		    //使用POSITION语义，将模型空间的顶点坐标填充至vertex
+			float4 vertex:POSITION;
+			//使用NORMAL语义，将模型空间的顶点法线填充至normal（由于是矢量，这里使用float3）
+			float3 normal:NORMAL;
+			//使用TEXCOORD0语义，将模型的第一套纹理坐标填充texcoord变量
+			float4 texcoord:TEXCOORD0;
+		};
+		
+		//使用一个结构体定义片元着色器的输出
+		struct v2f {
+			//SV_POSITION语义告诉Unity，pos中包含模型顶点在裁剪空间的坐标
+			float4 pos:SV_POSITION;
+			//COLOR0语义告诉Unity,color用于存储颜色信息
+			fixed3 color : COLOR0;
+		};
+
+	      v2f vert(a2v v) {
+			//声明输出结构
+			v2f o;
+			o.pos= mul(UNITY_MATRIX_MVP,v.vertex);
+			//将法线方向映射到颜色中(法线矢量范围[-1,1],因此做一个映射计算)  
+			o.color = v.normal*0.5 + fixed3(0.5,0.5,0.5);
+			return o;
+		}
+
+		fixed4 frag(v2f i) : SV_Target{
+			//将计算后的颜色显示出来
+			return fixed4(i.color,1.0);
+		}
+
+		ENDCG
+	}
+	}
+	FallBack "Diffuse"
+}
+
+顶点着色器的输入和输出都是通过定义结构体变量对数据进行传递，当需要传递的数据不止一个时，需要使用定义结构体变量对多个数据进行传递。当顶点着色器的返回数据为一个结构时，方法的返回值指定需要返回的结构体类型，方法的参数列表后无需SV：POSITION语义，因为此时输出的数据不仅仅只是模型裁剪空间的顶点坐标了。
+
+绑定到新建材质上，得到的效果： 
+
+![](http://i.imgur.com/hlnCYMn.png) 
+
+**添加属性**  
+Shader中添加属性，可以在材质面板上看到对应的变量，并可以通过材质面板为该属性赋值。在计算输出时，需要在CG代码中，定义一个与属性名称和类型的相同的变量，才能在计算时使用该变量。   
+
+	Properties{
+		_Color("Color Tint",Color) = (1.0,1.0,1.0,1.0)
+	}  
+CG代码片段中：  
+	
+	CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag 
+	//在CG代码中，需要定义一个与属性名称和类型匹配的变量
+			fixed4 _Color;  
+	fixed4 frag(v2f i) : SV_Target{
+			//将计算后的颜色显示出来
+			fixed3 c= i.color;
+			//使用_Color属性控制颜色属性
+			c *= _Color.rgb;
+			return fixed4(c,1.0);
+		}
+	ENDCG  
+
+效果:  
+
+![](http://i.imgur.com/wOinvWs.png)
