@@ -189,4 +189,147 @@ XAML中为对象的事件指定事件处理器，使用事件处理器的函数�
 
 	<ClassName.EventName="EventHandlerName"/>  
 
-EventHandlerName的事件处理器的具体逻辑会写在MainWindow.xaml.cs的后台代码中，使业务逻辑和UI设计分离，通过partial的类关键字最后编译合并。
+EventHandlerName的事件处理器的具体逻辑会写在MainWindow.xaml.cs的后台代码中，使业务逻辑和UI设计分离，通过partial的类关键字最后编译合并。  
+
+### x名称空间 ###
+x名称空间内的成员（x:Class、x:Name）是专门写给XAML编译器，引导XAML编译器将XAML代码编译成CLR代码的。  
+包含XAML代码的WPF程序都需要通过语句： 
+
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"   
+引入"http://schemas.microsoft.com/winfx/2006/xaml"名称空间。  
+x名称空间内包含代码编写者能够与XAML编译器沟通的工具，这些工具告诉编译器重要信息，例如编译结果与哪个C#代码的编译结果合并、使用XAML声明的元素是public还是private访问级别等。包含的工具具体有：  
+
+![](http://i.imgur.com/amqfD9K.png)   
+![](http://i.imgur.com/4Bnqnbz.png)  
+
+分为3部分：  
+Attribute、标记扩展、XAML指令元素   
+
+**Attribute**  
+
+- **x:Class**   
+告诉XAML编译器将XAML标签的编译结果与后台代码中指定的类合并。 
+- **x:ClassModifier**  
+告诉XAML编译器由标签编译生成的类具有怎样的访问控制级别。  
+- **x:Name**   
+XAML的标签声明的是对象，一个XAML标签会对应一个对象，这个对象一般为控件类的实例。x:Name的两个作用，一是告诉XAML编译器，当一个标签带有x:Name时除了为这个标签生成对应的实例外，还要为这个实例声明一个引用变量，变量名就是x:Name的值；二是将XAML标签对应的对象的Name属性设为x:Name，并将这个值注册到UI树上，方便查找。  
+- **x:FieldModifier**  
+用来在XAML中改变引用对象的访问级别   
+
+		<StackPanel>
+			<TextBox x:Name="textBox1" x:FieldModifier="public"/>
+		</StackPanel>  
+引用变量在XAML中默认访问级别为:internal。**注意**在使用x:FieldModifier的前提是，该标签同时使用了x:Name的特性。  
+- **x:Key**   
+为资源贴上用于检索的索引。WPF中，每个元素都有自己的Resources属性，属性是个"Key-Value"式的集合，为标签添加x:Key，将元素放进这个集合，就能够被检索。需要被重复使用的内容，都会放在资源里。使用实例：  
+
+		<Window x:Class="About_X_Key.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:About_X_Key"
+        mc:Ignorable="d"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        Title="MainWindow" Height="350" Width="525">
+    		<Window.Resources>
+        		<sys:String x:Key="myString">Hello WPF Resources!
+            	</sys:String>
+    		</Window.Resources>
+           <Grid>
+        		<StackPanel>
+            		<TextBox Text="{StaticResource ResourceKey=myString}" Margin="5"/>
+            		<TextBox x:Name="textBox1" Margin="5"/>
+            		<Button Content="Show" Click="ButtonBase_OnClick" Margin="5"/>
+        	</StackPanel>
+    	</Grid>
+		</Window>      
+这里将一个字符串对象添加x:Key作为重复使用的资源。在XAML中使用String类，使用  
+
+		xmlns:sys="clr-namespace:System;assembly=mscorlib"   
+引用mscorlib.dll,使用属性标签向Window.Resources添加字符串。代码效果：  
+![](http://i.imgur.com/GQdXHqL.png)  
+同时，该资源在后台代码中也能被使用，通过FindResources方法传入key找到对应资源：  
+
+	 	private void ButtonBase_OnClick(object sender, RoutedEventArgs e)
+        {
+            string str = this.FindResource("myString") as string;
+            this.textBox1.Text = str;
+        }  
+点击Button按钮效果： 
+![](http://i.imgur.com/sZn80C6.png)  
+- **x:Shared**   
+与x:key配合使用，如果x:Shared的值为true,检索到该对象时得到的都是同一个对象（类似C#引用类型变量）,如果x:Shared的值为false，则每次检索得到的对象是新的副本（类似C#的数值类型变量），默认是true。  
+
+**标记扩展**  
+
+- **x:Type**   
+当在XAML中想表达某个数据类型时，需要使用x:Type标记扩展。比如某一个类的属性，它的值要求是一种数据类型，当在XAML为这个属性赋值时需要使用x:Type。使用实例：  
+**创建自定义窗口控价**  
+	
+		<UserControl x:Class="About_X_Type.MyWindow"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:About_X_Type"
+             mc:Ignorable="d" 
+             d:DesignHeight="300" d:DesignWidth="300">
+    	<Grid>
+        <StackPanel Background="LightBlue">
+            <TextBox Margin="5"/>
+            <TextBox Margin="5"/>
+            <TextBox Margin="5"/>
+            <Button Content="OK" Margin="5"/>
+        </StackPanel>
+    	</Grid>
+		</UserControl>  
+这里根标签是UserControl类型，不是Window类型，控件效果：  
+![](http://i.imgur.com/6leR2Q1.png)  
+**创建Button派生类**  
+
+	 	class MyButton:Button
+    	{
+        public Type UserWindowType { get; set; }
+
+        protected override void OnClick()
+        {
+            base.OnClick();//激发Click事件
+            UserControl win=Activator.CreateInstance(this.UserWindowType) as UserControl;
+            //MessageBox.Show("done");
+            if (win != null)
+            {
+                Window window=new Window();
+                window.Width = 300;
+                window.Height = 300;
+                window.Content = win;
+                window.ShowDialog();
+            }
+        }
+    	}   
+派生类中有一个Type类型的属性，UserWindowType，需要将一种类型赋值给该属性，重写OnClick方法，在调用父类Button的OnClick()方法外，创建出UserWindowType的实例，并将该实例加载到一个Window中，通过Window显示出该控件。  
+**创建主窗口**   
+
+		<Window x:Class="About_X_Type.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:About_X_Type"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="350" Width="525">
+    		<Grid>
+        		<StackPanel>
+            <local:MyButton Content="Show" UserWindowType="{x:Type TypeName=local:MyWindow}" Margin="5"/>
+        		</StackPanel>
+    		</Grid>
+	</Window>  
+这里MyWindow与MyButon都在这个名称空间下  
+
+		xmlns:local="clr-namespace:About_X_Type"  
+因此使用这个两个类型时，加 **local:** 主窗体上添加了自定义的MyButton,并把UserControl类型的自定义窗体赋值给MyButton的UserWindowType属性。运行效果：  
+![](http://i.imgur.com/6SXDtbJ.png)   
+点击"Show"   
+![](http://i.imgur.com/v4Z3sTz.png)
+
+  
