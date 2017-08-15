@@ -974,7 +974,7 @@ WCF中，信道是通过信道管理器创建（信道监听器和信道工厂�
 - **双工模式下**  
 消息双方完全等价，均具有输入和输出的功能  
 
-WCF通过**信道形状（Channel Shape）**来表述不同消息模式下消息交换双方信道的不同要求。信道形状按照消息交换模式的不同，将信道进行如下分类（WCF为信道定义一系列接口）：   
+WCF通过**信道形状（Channel Shape）**来表述不同消息交换模式下消息交换双方信道的不同要求。信道形状按照消息交换模式的不同，将信道进行如下分类（WCF为信道定义一系列接口）：   
 
 ![](http://i.imgur.com/a1NqiPJ.png)
  
@@ -982,7 +982,7 @@ WCF通过**信道形状（Channel Shape）**来表述不同消息模式下消息
 
 ![](http://i.imgur.com/TvX2QrH.png)
 
-**案例：自定义信道**    
+**创建自定义信道**    
 自定义信道的方法和属性，仅仅通过System.Console在控制台打印方法和属性名称，可以通过自身需求进行扩展。静态打印类及打印方法：
 
 	public static class PrintHelper
@@ -1102,10 +1102,315 @@ WCF通过**信道形状（Channel Shape）**来表述不同消息模式下消息
 信道自身不能孤立存在，存在于一个或多个信道对象连接而成的信道栈中。因此，对于不在栈尾的信道来说，处理完消息，一般会把处理后的消息传递给下一个信道。反映在方法上，需要执行当前信道的某个方法后，获取下一个信道对象，调用同名方法。  
 
 自定义回复信道与自定义请求信道类似，实现IReplyChannel接口，直接继承自ChannelBase。  
+自定义会话信道SimpleDuplexSessionChannel,实现IDuplexSessionChannel接口，并直接继承自ChannelBase。  
 
 自定义的信道完成后，并不能直接通过信道管理器创建自定义信道对象，还需要对信道管理器进行自定义。
 
+**信道管理器**     
+信道管理器是信道的创建者，信道栈中的每一个信道都对应一个信道管理器。服务端的信道用于监听来自客户端的请求，又称为信道监听器；客户端的信道创建用于请求发送和回复接收的通道，又称为信道工厂。    
+
+**信道监听器**
+
+- **基于数据报信道的监听机制**   
+对于数据报的消息交换模式下，消息发送是单向性的，当服务端开始监听时，监听信道会被创建出来，一旦消息请求被成功监听，无论来自哪个客户端（服务代理），信道监听器都会使用建好的信道栈对消息进行接收和处理。而对于服务端来说，相同的监听地址采用同一个信道栈。  
+
+- **基于会话信道的监听机制**    
+对于会话场景，信道监听器创建出的信道栈不是共享，而是和客户端一一匹配。信道栈的创建时机在成功监听到消息请求，并不是开始监听的时候。对于来自某个客户端的第一次请求，信道监听器会为之创建一个新的信道栈，因此WCF具有最大并发会话的限制。  
+
+信道监听器是位于服务端的信道管理器，所有的信道监听器继承自基类：ChannelManagerBase。WCF定义了相关的接口和抽象基类。对应关系为：  
+![](http://i.imgur.com/SSR37UW.png)
 
 
+**创建自定义信道监听器**  
+
+- **创建数据报信道监听器**  
+自定义信道监听器SimpleDatagramChannelListener<TChannel>继承泛型ChannelListennerBase< TChannel >。某一个信道只负责某个信道的创建，整个信道栈的创建依赖相关信道监听器的协同工作。在创建自定义信道监听器时，需要指定一个内部信道监听器（_innerChannelListener），代表下一个信道对应的信道监听器。构造函数中，_innerChannelListener通过传入的BindingContext创建。自定义信道监听器最重要的功能是创建自定义ReplyChannel:SimpleReplyChannel。SimpleReplyChannel的创建实现在OnAcceptChannel和OnEndAcceptChannel方法中。 
+
+		 public class SimpleDatagramChannelListener<TChannel>:ChannelListenerBase<TChannel> where    TChannel:class ,IChannel
+  	 	{
+       	private IChannelListener<TChannel> _channelListener;
+
+       	public SimpleDatagramChannelListener(BindingContext context)
+       	{
+            PrintHelper.Print(this,"SimpleDatagramChannelListener");
+           this._channelListener = context.BuildInnerChannelListener<TChannel>();
+       	}
+
+       	protected override void OnAbort()
+       	{
+           PrintHelper.Print(this,"OnAbort");
+            this._channelListener.Abort();
+       	}
+
+       	protected override void OnClose(TimeSpan timeout)
+       	{
+           PrintHelper.Print(this,"OnClose");
+            this._channelListener.Close();
+       	}
+
+       	protected override void OnEndClose(IAsyncResult result)
+       	{
+           PrintHelper.Print(this,"OnEndClose");
+           this._channelListener.EndClose(result);
+       	}
+
+       	protected override IAsyncResult OnBeginClose(TimeSpan timeout, AsyncCallback callback, object state)
+       	{
+           PrintHelper.Print(this,"OnBeginClose");
+           return this._channelListener.BeginClose(callback, state);
+       	}
+
+       	protected override void OnOpen(TimeSpan timeout)
+       	{
+          PrintHelper.Print(this,"OnOpen");
+          this._channelListener.Open(timeout);
+       	}
+
+       	protected override IAsyncResult OnBeginOpen(TimeSpan timeout, AsyncCallback callback, object state)
+       	{
+           PrintHelper.Print(this,"OnBeginOpen");
+           return this._channelListener.BeginOpen(callback, state);
+       	}
+
+       	protected override void OnEndOpen(IAsyncResult result)
+       	{
+           PrintHelper.Print(this,"OnEndOpen");
+            this._channelListener.EndOpen(result);
+       	}
+
+       	protected override bool OnWaitForChannel(TimeSpan timeout)
+       	{
+           PrintHelper.Print(this,"OnWaitForChannel");
+           return this._channelListener.WaitForChannel(timeout);
+       	}
+
+       	protected override IAsyncResult OnBeginWaitForChannel(TimeSpan timeout, AsyncCallback callback, object state)
+       	{
+           PrintHelper.Print(this,"OnBeginWaitForChannel");
+           return this._channelListener.BeginAcceptChannel(timeout,callback, state);
+       	}
+
+       	protected override bool OnEndWaitForChannel(IAsyncResult result)
+       	{
+           PrintHelper.Print(this,"OnEndWaitForChannel");
+           return this._channelListener.EndWaitForChannel(result);
+       	}
+
+       	public override Uri Uri {
+           get
+           {
+               PrintHelper.Print(this,"Uri");
+               return this._channelListener.Uri;
+           }
+       	}
+       	protected override TChannel OnAcceptChannel(TimeSpan timeout)
+       	{
+           PrintHelper.Print(this,"OnAcceptChannel");
+            IReplyChannel innerChannel=this._channelListener.AcceptChannel(timeout) as IReplyChannel;
+            return new SimpleReplyChannel(this,innerChannel) as TChannel;
+       	}
+
+       	protected override IAsyncResult OnBeginAcceptChannel(TimeSpan timeout, AsyncCallback callback, object state)
+       	{
+           PrintHelper.Print(this,"OnBeginAcceptChannel");
+           return this._channelListener.BeginAcceptChannel(timeout, callback, state);
+       	}
+
+       	protected override TChannel OnEndAcceptChannel(IAsyncResult result)
+       	{
+           PrintHelper.Print(this,"OnEndAcceptChannel");
+           return new SimpleReplyChannel(this,this._channelListener.EndAcceptChannel(result) as IReplyChannel) as TChannel;
+       	}
+    	}
+
+- **创建会话信道监听器**   
+自定义会话信道监听器SimpleSessionChannelListener<TChannel>。定义与上面类似，不同在于需要重写GetProperty<T>方法。  
+
+		public class SimpleSessionChannelListener<TChannel>:ChannelListenerBase<TChannel> where TChannel:class,IChannel
+    	{
+        private IChannelListener<TChannel> _channelListener;
+
+        public SimpleSessionChannelListener(BindingContext context)
+        {
+            PrintHelper.Print(this,"SimpleChannelListener");
+            this._channelListener = context.BuildInnerChannelListener<TChannel>();
+        }
+
+        protected override void OnAbort()
+        {
+            PrintHelper.Print(this,"OnAbort");
+            this._channelListener.Abort();
+        }
+
+        protected override void OnClose(TimeSpan timeout)
+        {
+            PrintHelper.Print(this,"Close");
+            this._channelListener.Close(timeout);
+        }
+
+        protected override void OnEndClose(IAsyncResult result)
+        {
+            PrintHelper.Print(this,"EndClose");
+            this._channelListener.EndClose(result);
+        }
+
+        protected override IAsyncResult OnBeginClose(TimeSpan timeout, AsyncCallback callback, object state)
+        {
+            PrintHelper.Print(this,"OnBeginClose");
+            return this._channelListener.BeginClose(timeout,callback,state);
+        }
+
+        protected override void OnOpen(TimeSpan timeout)
+        {
+            PrintHelper.Print(this,"OnOpen");
+            this._channelListener.Open(timeout);
+        }
+
+        protected override IAsyncResult OnBeginOpen(TimeSpan timeout, AsyncCallback callback, object state)
+        {
+            PrintHelper.Print(this,"OnBeginOpen");
+            return this._channelListener.BeginOpen(timeout, callback, state);
+        }
+
+        protected override void OnEndOpen(IAsyncResult result)
+        {
+            PrintHelper.Print(this,"EndOpen");
+            this._channelListener.EndOpen(result);
+        }
+
+        protected override bool OnWaitForChannel(TimeSpan timeout)
+        {
+            PrintHelper.Print(this,"OnWaitForChannel");
+            return this._channelListener.WaitForChannel(timeout);
+        }
+
+        protected override IAsyncResult OnBeginWaitForChannel(TimeSpan timeout, AsyncCallback callback, object state)
+        {
+            PrintHelper.Print(this,"OnBeginWaitForChannel");
+            return this._channelListener.BeginAcceptChannel(timeout, callback, state);
+        }
+
+        protected override bool OnEndWaitForChannel(IAsyncResult result)
+        {
+            PrintHelper.Print(this,"OnEndWaitForChannel");
+            return this._channelListener.EndWaitForChannel(result);
+        }
+
+        public override Uri Uri {
+            get
+            {
+                PrintHelper.Print(this,"Uri");
+                return this._channelListener.Uri;
+            }
+        }
+        protected override TChannel OnAcceptChannel(TimeSpan timeout)
+        {
+            PrintHelper.Print(this,"OnAcceptChannel");
+            IDuplexSessionChannel innerChannel=this._channelListener.AcceptChannel(timeout) as IDuplexSessionChannel;
+            return new SimpleDuplexSessionChannel(this,innerChannel) as TChannel;
+        }
+
+        protected override IAsyncResult OnBeginAcceptChannel(TimeSpan timeout, AsyncCallback callback, object state)
+        {
+            PrintHelper.Print(this,"OnBeginAcceptChannel");
+            return this._channelListener.BeginAcceptChannel(timeout, callback, state);
+        }
+
+        protected override TChannel OnEndAcceptChannel(IAsyncResult result)
+        {
+            PrintHelper.Print(this,"OnEndAcceptChannel");
+            return new SimpleDuplexSessionChannel(this,this._channelListener.EndAcceptChannel(result) as IDuplexSessionChannel) as TChannel;
+        }
+
+        public override T GetProperty<T>()
+        {
+            return this._channelListener.GetProperty<T>();
+        }
+    	} 
 
 
+**信道工厂**   
+信道工厂是客户端的信道管理器别名，信道工厂作用是单纯地创建用于发送请求和接受回复的信道。WCF为信道工厂创建两个接口：IChannelFactory和IChannelFactory<TChannel>和两个抽象基类：ChannelFactoryBase和ChannelFactoryBase<TChannel>。继承关系及接口实现关系：  
+
+![](http://i.imgur.com/f5ywNmP.png)  
+
+**创建数据报信道工厂**   
+为之前的SimpleRequestChannel创建信道工厂：SimpleDatagramChannelFactory<TChannel>直接继承抽象基类ChannelFactoryBase<TChannel>。OnCreatChanel是核心方法，实现真正信道创建。     
+
+		public class SimpleDatagramChanelFactory<TChannel>:ChannelFactoryBase<TChannel>
+    {
+        private IChannelFactory<TChannel> _innerChannelFactory;
+
+        public SimpleDatagramChanelFactory(BindingContext context)
+        {
+            PrintHelper.Print(this,"SimpleDatagramChannelFactory");
+            this._innerChannelFactory = context.BuildInnerChannelFactory<TChannel>();
+        }
+
+        protected override void OnOpen(TimeSpan timeout)
+        {
+            PrintHelper.Print(this,"OnOpen");
+            this._innerChannelFactory.Open(timeout);
+        }
+
+        protected override IAsyncResult OnBeginOpen(TimeSpan timeout, AsyncCallback callback, object state)
+        {
+            PrintHelper.Print(this,"OnBeginOpen");
+            return this._innerChannelFactory.BeginOpen(timeout,callback,state);
+        }
+
+        protected override void OnEndOpen(IAsyncResult result)
+        {
+            PrintHelper.Print(this,"OnEndOpen");
+            this._innerChannelFactory.EndOpen(result);
+        }
+
+        protected override TChannel OnCreateChannel(EndpointAddress address, Uri via)
+        {
+            PrintHelper.Print(this,"OnCreatChannel");
+            return (TChannel)(object)new SimpleRequestChannel(this,this._innerChannelFactory.CreateChannel(address,via) as IRequestChannel);
+        }
+    }   
+
+**创建会话信道工厂**   
+为之前的会话信道SimpleDuplexSessionCahnnel创建信道工厂：SimpleSessionChannelFactory<TChannel>。  
+
+		 public class SimpleSessionChannelFactory<TChannel>:ChannelFactoryBase<TChannel>
+    {
+        private IChannelFactory<TChannel> _innerChannelFactory;
+
+        public SimpleSessionChannelFactory(BindingContext context)
+        {
+            PrintHelper.Print(this,"SimpleSessionChannelFactory");
+            this._innerChannelFactory = context.BuildInnerChannelFactory<TChannel>();
+        }
+
+        protected override void OnOpen(TimeSpan timeout)
+        {
+            PrintHelper.Print(this,"OnOpen");
+            this._innerChannelFactory.Open(timeout);
+        }
+
+        protected override IAsyncResult OnBeginOpen(TimeSpan timeout, AsyncCallback callback, object state)
+        {
+            PrintHelper.Print(this,"OnBeginOpen");
+            return this._innerChannelFactory.BeginOpen(timeout, callback, state);
+        }
+
+        protected override void OnEndOpen(IAsyncResult result)
+        {
+            PrintHelper.Print(this,"OnEndOpen");
+            this._innerChannelFactory.EndOpen(result);
+        }
+
+        protected override TChannel OnCreateChannel(EndpointAddress address, Uri via)
+        {
+            PrintHelper.Print(this,"OnCreatChannel");
+            return (TChannel)(object)new SimpleDuplexSessionChannel(this,this._innerChannelFactory.CreateChannel(address,via) as SimpleDuplexSessionChannel);
+        }
+
+        public override T GetProperty<T>()
+        {
+            return this._innerChannelFactory.GetProperty<T>();
+        }
+    }
