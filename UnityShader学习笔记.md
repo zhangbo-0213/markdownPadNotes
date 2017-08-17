@@ -1,4 +1,8 @@
 ## Unity Shader入门学习##
+**学习教材：《UnityShader入门精要》**  
+
+----------
+
 ### 渲染流水线 ###
 渲染流水线从概念部分分为三个部分：  
 
@@ -452,4 +456,435 @@ CG代码片段中：
 
 效果:  
 
-![](http://i.imgur.com/wOinvWs.png)
+![](http://i.imgur.com/wOinvWs.png)  
+
+### Unity中的基础光照 ###
+**着色**是根据材质属性（高光反射属性，漫反射属性等）、光源信息（如光源方向、辐照度等），使用**等式**去计算沿某个观察方向的出射度的过程。该等式即 **光照模型（Lighting Model）** 。   
+ 
+光照模型中包含不同的部分来计算光线经过物体表面后不同的方向   
+**高光反射部分**：表示光线在物体表面如何被反射   
+**漫反射部分**：表示光线在物体表面如何被折射，吸收和散射出表面 
+
+**标准光照模型**     
+标准光照模型将进入到摄像机内的光线分为4部分，每部分使用一种方法来计算其贡献度。   
+   
+- **自发光（emissive）**  
+该部分用于描述当给定一个方向时，表面本身会像该方向发射多少辐射量。（如果没有使用全局光照，自发光的表面不会照亮周围物体，只会使本身看起来更亮）  
+标准光照模型中，自发光直接使用材质的自发光颜色：
+C(emissive)=M(emissive)
+- **高光反射（specular）**   
+该部分用于描述光源照射到物体表面时，该表面在完全镜面反射的方向反射出多少能量。高光反射需要知道的信息比较多，有法线方向（ **n** ）、入射方向( **i** )，反射方向( **r** )，视角方向( **v** )等。反射方向（ **r** ）可由入射方向（ **i** ）和法线方向( **n** )计算出来：    
+![](http://i.imgur.com/KjnHeFI.png) 
+![](http://i.imgur.com/FoHSWg7.png)  
+
+计算出反射方向后，由**Phong**模型计算高光反射部分：  
+![](http://i.imgur.com/JqrjJKN.png) 
+M（gloss）是材质的光泽度，也成为反光度  
+
+**Blinn**模型提出一个简单的修改方法得到类似效果，避免计算反射方向，引入一个新的矢量，对入射方向和视角方向求和后归一化得到：  
+![](http://i.imgur.com/DsgBsxt.png)
+![](http://i.imgur.com/sOGtzHw.png) 
+然后使用法线方向和新的矢量进行计算而不是反射方向和视角方向：  
+![](http://i.imgur.com/aVso0PK.png)
+
+- **漫反射（diffuse）**   
+该部分用于描述当光线从光源照射到物体表面时，会向**每个方向**散射的能量。漫反射光照复合Lambert定律：反射光线强度与表面法线和光源之间夹角余弦成正比  
+![](http://i.imgur.com/gcZoOC1.png)
+使用 **Max** 函数是防止法线和光源方向点乘的结果为负，使物体前面被从背面来的光源照亮。
+- **环境光（ambient）**  
+该部分用于描述其他的间接光照。标准光照模型中，使用一种被称为环境光的部分模拟间接光照。环境光使用全局变量，场景中所有物体都使用这个环境光。   
+C(ambient)=g(ambient)  
+
+光照计算可以在顶点着色器中计算，称为**逐顶点光照**，也可以在片元着色器中计算，称为**逐像素光照**。
+标准光照模型仅仅是一个经验模型，并不完全符合真实世界中的光照现象。这种模型的局限性在于：     
+
+- 重要的物理现象无法表现出来，如菲涅尔反射
+- 该模型**各项同性**，固定视角和光源方向旋转表面时，反射不会发生任何改变。而有些表面是具有**各项异性**的，如拉丝金属等  
+
+不过由于易用性、计算速度和得到效果都比较好，被广泛应用。
+
+**漫反射光照模型实现** 
+
+**逐顶点漫反射实现**   
+
+	// Upgrade NOTE: replaced '_World2Object' with 'unity_WorldToObject'
+	// Upgrade NOTE: replaced 'mul(UNITY_MATRIX_MVP,*)' with 'UnityObjectToClipPos(*)'
+
+	Shader "Custom/Chapter6_DiffuseVertexLevel" {
+	
+	Properties{
+		_Diffuse("DiffuseColor",Color) = (1.0,1.0,1.0,1.0)
+	}
+
+		SubShader{
+		Pass{
+		//定义光照模式，只有正确定光照模式，才能得到一些Unity内置光照变量
+		Tags{"LightMode" = "ForwardBase"}
+
+		CGPROGRAM
+		#pragma vertex vert
+		#pragma fragment frag
+		//使用Unity的内置包含文件，使用其内置变量
+		#include "Lighting.cginc"
+
+		//定义与属性相同类型和相同名称的变量
+		fixed4 _Diffuse;
+		//定义顶点着色器输入结构体
+	struct a2v {
+		float4 vertex:POSITION;
+		float3 normal:NORMAL;
+	};
+		//定义顶点着色器输出结构体（片元着色器输入结构体）
+	struct v2f {
+		float4 pos:SV_POSITION;
+		fixed3 color : COLOR;
+	};
+
+	v2f vert(a2v v) {
+		v2f o;
+		o.pos = UnityObjectToClipPos(v.vertex);
+
+		fixed3 ambient = UNITY_LIGHTMODEL_AMBIENT.xyz;
+		//通过模型到世界的转置逆矩阵计算得到世界空间内的顶点法向方向（v.normal存储的是模型空间内的顶点法线方向）
+		fixed3 worldNormal = normalize(mul(v.normal,(float3x3)unity_WorldToObject));
+		//得到世界空间内的光线方向
+		fixed3 worldLight = normalize(_WorldSpaceLightPos0.xyz);
+
+		//根据Lambert定律计算漫反射 saturate函数将所得矢量或标量的值限定在[0,1]之间
+		fixed3 diffuse = _LightColor0.rgb*_Diffuse.rgb*saturate(dot(worldNormal,worldLight));
+
+		o.color = diffuse + ambient;
+		return o;
+	}
+
+	fixed4 frag(v2f i) :SV_Target{
+		return fixed4(i.color,1.0);
+	}
+
+		ENDCG
+	}
+		
+	}
+	Fallback"Diffuse"
+	}  
+实现效果：  
+![](http://i.imgur.com/jVJrBi7.png)
+
+**逐像素漫反射实现**    
+
+	Shader "Custom/Chapter6_DiffusePixelLevel" {
+	
+	Properties{
+		_Diffuse("DiffuseColor",Color) = (1.0,1.0,1.0,1.0)
+	}
+
+		SubShader{
+		Pass{
+		//定义光照模式，只有正确定光照模式，才能得到一些Unity内置光照变量
+		Tags{ "LightMode" = "ForwardBase" }
+
+		CGPROGRAM
+		#pragma vertex vert
+		#pragma fragment frag
+		//使用Unity的内置包含文件，使用其内置变量
+		#include "Lighting.cginc"
+
+		//定义与属性相同类型和相同名称的变量
+		fixed4 _Diffuse;
+		//定义顶点着色器输入结构体
+	struct a2v {
+		float4 vertex:POSITION;
+		float3 normal:NORMAL;
+	};
+		//定义顶点着色器输出结构体（片元着色器输入结构体）
+	struct v2f {
+		float4 pos:SV_POSITION;
+		float3 worldNormal:TEXCOORD0;
+	};
+
+	v2f vert(a2v v) {
+		v2f o;
+		o.pos = UnityObjectToClipPos(v.vertex);
+		//存储世界空间下的法线，传递给片元着色器，
+		//只有顶点着色器才能接受来自模型空间的数据，因此需要先计算再传递给片元着色器
+		o.worldNormal =mul(v.normal,_World2Object);
+		return o;
+	}
+
+	fixed4 frag(v2f i) :SV_Target{
+		fixed3 ambient = UNITY_LIGHTMODEL_AMBIENT.xyz;
+		fixed3 worldNormal = normalize(i.worldNormal);
+		fixed3 worldLight = normalize(_WorldSpaceLightPos0);
+
+		fixed3 diffuse = _LightColor0.rgb*_Diffuse.rgb*saturate(dot(worldNormal,worldLight));
+
+		fixed3 color = diffuse + ambient;
+		return fixed4(color,1.0);
+	}
+
+		ENDCG
+	}
+
+	}
+		Fallback"Diffuse"
+	}  
+
+实现效果：  
+![](http://i.imgur.com/mB1EjhO.png)  
+左侧为逐顶点实现效果，右侧为逐像素实现效果。可以看到，在逐顶点效果中，模型下部背光面与向光面的交界处会出现不平滑的锯齿过渡。而逐像素则交界处相对平滑。但以上两种均存在在光线无法到达的区域，模型外观通常全黑，没有明暗变化，使背光区域看起来像平面，为此提出一项改进技术——**Half Lambert**光照模型。 
+
+**半兰伯特(Half Lambert)光照模型**   
+广义半兰伯特光照模型计算公式：    
+![](http://i.imgur.com/TwRonRY.png)   
+半兰伯特没有使用max函数进行限制负值，对点积结果进行缩放后再做偏移。一般情况下，α和β的取值为0.5,0.5,这样将[-1,1]的结果映射到[0,1]。这样在原有兰伯特基础上，背光面取值为负的顶点在半兰伯特下，有了对应的到[0,0.5]的值，**半兰伯特**并没有物理基础，仅仅只是视觉加强技术而已。  
+
+半兰伯特实现：  
+
+	fixed halfLambert = dot(worldNormal, worldLight)*0.5 + 0.5;
+	fixed3 diffuse = _LightColor0.rgb*_Diffuse.rgb*halfLambert;  
+
+实现效果:  
+![](http://i.imgur.com/nosxzYs.png)    
+
+**高光反射光照模型实现**   
+
+**逐顶点高光反射实现**  
+
+	Shader "Custom/Chapter6_SpecularVertexLevel" {
+	Properties{
+		_Diffuse("DiffuseColor",Color)=(1,1,1,1)
+		_Specular("SpecualrColor",Color)=(1,1,1,1)
+		_Gloss("Gloss",Range(8.0,256))=20
+	}
+
+		SubShader{
+		Pass{
+		Tags{"LightMode"="ForwardBase"}
+		
+		CGPROGRAM
+
+		#pragma vertex vert
+		#pragma fragment frag
+
+		#include "Lighting.cginc"
+
+		fixed4 _Diffuse;
+		fixed4 _Specular;
+		float _Gloss;
+
+		struct a2v {
+			float4 vertex:POSITION;
+			float3 normal:NORMAL;
+		};
+
+		struct v2f {
+			float4 pos:SV_POSITION;
+			fixed3 color : COLOR;
+
+		};
+
+		v2f vert(a2v v) {
+			v2f o;
+			o.pos = mul(UNITY_MATRIX_MVP,v.vertex);
+
+			fixed3 ambient = UNITY_LIGHTMODEL_AMBIENT.xyz;
+
+			fixed3 worldNormal = normalize(mul(v.normal,(float3x3)_World2Object));
+			fixed3 worldLightDir = normalize(_WorldSpaceLightPos0.xyz);  
+
+			fixed3 diffuse = _LightColor0.rgb*_Diffuse.rgb*saturate(dot(worldNormal,worldLightDir));
+
+			//通过CG提供的reflect(i,n)提供的函数计算反射方向
+			fixed3 reflectDir = normalize(reflect(-worldLightDir,worldNormal));
+			//计算世界空间下的观察方向
+			fixed3 viewDir = normalize(_WorldSpaceCameraPos.xyz-mul(_Object2World,v.vertex).xyz);
+			//计算高光反射部分
+			fixed3 specular = _LightColor0.rgb*_Specular.rgb*pow(saturate(dot(viewDir, reflectDir)), _Gloss);
+
+			o.color=ambient+diffuse+specular;		
+
+			return o;
+		}
+
+		fixed4 frag(v2f i) :SV_Target{
+			return fixed4(i.color,1.0);
+		}
+
+		ENDCG
+		}
+	}
+
+	Fallback "Specular"
+	}   
+实现效果： 
+![](http://i.imgur.com/5P4Z4vP.png)    
+可以看出，逐顶点的高光反射在高光部分出现非常明显的锯齿不连续现象，由于高光计算部分pow（）是非线性，因此顶点插值后的结果不理想。   
+
+**逐像素高光反射实现**  
+
+	// Upgrade NOTE: replaced '_Object2World' with 'unity_ObjectToWorld'
+	// Upgrade NOTE: replaced '_World2Object' with 'unity_WorldToObject'
+	// Upgrade NOTE: replaced 'mul(UNITY_MATRIX_MVP,*)' with 'UnityObjectToClipPos(*)'
+
+	Shader "Custom/Chapter6_SpecularPixelLevel" {
+	Properties{
+		_Diffuse("DiffuseColor",Color)=(1,1,1,1)
+		_Specular("SpecualrColor",Color)=(1,1,1,1)
+		_Gloss("Gloss",Range(8.0,256))=20
+	}
+
+		SubShader{
+		Pass{
+		Tags{"LightMode"="ForwardBase"}
+		
+		CGPROGRAM
+
+		#pragma vertex vert
+		#pragma fragment frag
+
+		#include "Lighting.cginc"
+
+		fixed4 _Diffuse;
+		fixed4 _Specular;
+		float _Gloss;
+
+		struct a2v {
+			float4 vertex:POSITION;
+			float3 normal:NORMAL;
+		};
+
+		struct v2f {
+			float4 pos:SV_POSITION;
+			fixed3 worldNormal : TEXCOORD0;
+			fixed3 viewDir : TEXCOORD1;
+
+		};
+
+		v2f vert(a2v v) {
+			v2f o;
+			o.pos = UnityObjectToClipPos(v.vertex);
+			 o.worldNormal = normalize(mul(v.normal,(float3x3)unity_WorldToObject));
+  		
+			//计算世界空间下的观察方向
+			o.viewDir = normalize(_WorldSpaceCameraPos.xyz-mul(unity_ObjectToWorld,v.vertex).xyz);
+			
+			return o;
+		}
+
+		fixed4 frag(v2f i) :SV_Target{
+			fixed3 ambient = UNITY_LIGHTMODEL_AMBIENT.xyz;
+
+			fixed3 worldLightDir = normalize(_WorldSpaceLightPos0.xyz);
+			fixed3 worldNormal = i.worldNormal;
+
+			fixed3 diffuse = _LightColor0.rgb*_Diffuse.rgb*saturate(dot(worldNormal, worldLightDir));
+
+			//通过CG提供的reflect(i,n)提供的函数计算反射方向
+			fixed3 reflectDir = normalize(reflect(-worldLightDir, worldNormal));
+			fixed3 viewDir = i.viewDir;
+			//计算高光反射部分
+			fixed3 specular = _LightColor0.rgb*_Specular.rgb*pow(saturate(dot(viewDir, reflectDir)), _Gloss);
+			return fixed4(ambient+diffuse+specular,1.0);
+		}
+
+		ENDCG
+		}
+	}
+
+	Fallback "Specular"
+	} 
+实现效果：
+![](http://i.imgur.com/qItJc7S.png)  
+右侧为逐像素高光效果，高光边缘连续无明显锯齿现象  
+
+**Blinn-Phong光照模型**   
+Blinnn模型没有使用反射方向，引入新的变量 **h** 通过对光照方向**i** 和 视角方向 **v** 求和后归一化得到，
+![](http://i.imgur.com/nDyUh3G.png)  
+Blinn模型高光计算：  
+![](http://i.imgur.com/zB68zTP.png)
+Blinn-Phong逐像素实现： 
+
+	// Upgrade NOTE: replaced '_Object2World' with 'unity_ObjectToWorld'
+	// Upgrade NOTE: replaced '_World2Object' with 'unity_WorldToObject'
+	// Upgrade NOTE: replaced 'mul(UNITY_MATRIX_MVP,*)' with 'UnityObjectToClipPos(*)'
+
+	Shader "Custom/Chapter6_SpecularBlinnPixelLevel" {
+	Properties{
+		_Diffuse("DiffuseColor",Color)=(1,1,1,1)
+		_Specular("SpecualrColor",Color)=(1,1,1,1)
+		_Gloss("Gloss",Range(8.0,256))=20
+	}
+
+		SubShader{
+		Pass{
+		Tags{"LightMode"="ForwardBase"}
+		
+		CGPROGRAM
+
+		#pragma vertex vert
+		#pragma fragment frag
+
+		#include "Lighting.cginc"
+
+		fixed4 _Diffuse;
+		fixed4 _Specular;
+		float _Gloss;
+
+		struct a2v {
+			float4 vertex:POSITION;
+			float3 normal:NORMAL;
+		};
+
+		struct v2f {
+			float4 pos:SV_POSITION;
+			fixed3 worldNormal : TEXCOORD0;
+			fixed3 viewDir : TEXCOORD1;
+
+		};
+
+		v2f vert(a2v v) {
+			v2f o;
+			o.pos = UnityObjectToClipPos(v.vertex);
+			 o.worldNormal = normalize(mul(v.normal,(float3x3)unity_WorldToObject));
+  		
+			//计算世界空间下的观察方向
+			o.viewDir = normalize(_WorldSpaceCameraPos.xyz-mul(unity_ObjectToWorld,v.vertex).xyz);
+			
+			return o;
+		}
+
+		fixed4 frag(v2f i) :SV_Target{
+			fixed3 ambient = UNITY_LIGHTMODEL_AMBIENT.xyz;
+
+			fixed3 worldLightDir = normalize(_WorldSpaceLightPos0.xyz);
+			fixed3 worldNormal = i.worldNormal;
+
+			fixed3 diffuse = _LightColor0.rgb*_Diffuse.rgb*saturate(dot(worldNormal, worldLightDir));
+			
+			fixed3 viewDir = i.viewDir;
+
+			fixed3 halfDir = normalize(worldLightDir+viewDir);
+			//计算高光反射部分
+			fixed3 specular = _LightColor0.rgb*_Specular.rgb*pow(saturate(dot(halfDir, worldNormal)), _Gloss);
+			return fixed4(ambient+diffuse+specular,1.0);
+		}
+
+		ENDCG
+		}
+	}
+
+	Fallback "Specular"
+	}   
+实现效果：  
+![](http://i.imgur.com/unl0D0Z.png)    
+最右侧为逐像素Blinn-Phong效果，可以看出高光的光晕面积相对比Phong的要大一些。实际渲染中，大多数情况下选择Blinn-Phong模型。
+
+在光照模型中，需要得到光源方向、视角方向等基本方向信息。通过自行计算的方式得到，如：  
+
+	fixed3 worldLightDir = normalize(_WorldSpaceLightPos0.xyz);
+	
+视角方向  
+	
+	o.viewDir = normalize(_WorldSpaceCameraPos.xyz-mul(unity_ObjectToWorld,v.vertex).xyz);
+如果处理更加复杂的光照（如点光源和聚光灯），计算方向就是错误的。Unity提供了一些内置函数来计算这些信息。  
+![](http://i.imgur.com/LkqnRkd.png)
