@@ -1414,3 +1414,189 @@ WCF通过**信道形状（Channel Shape）**来表述不同消息交换模式下
             return this._innerChannelFactory.GetProperty<T>();
         }
     }
+
+
+**绑定与绑定元素**     
+ 
+绑定对象作为终结点三要素实现所有通信细节，通过创建信道栈实现消息传递。绑定是信道层所有通信对象的最终缔造者，信道工厂和信道监听器最终的创建靠绑定对象实现。创建过程和另一个重要对象密切相关，即绑定元素。    
+**绑定元素**   
+一个绑定对象由一系列绑定元素组成，每个绑定元素负责创建相应的信道。绑定元素集合的构成及先后顺序，最终决定信道栈中的信道及先后顺序。信道可分为**传输信道**、**消息编码信道** 和 **协议信道**，相对的绑定元素可分为**传输绑定元素**、**消息编码绑定元素** 和 **协议绑定元素**    
+绑定元素的功能实现对信道监听器和信道工厂的创建。所有绑定元素的基类：System.ServiceModel.Channels.BindingElement的定义： 
+![](http://i.imgur.com/ftrlJMK.png)   
+定义中的Build方法用于创建对应的信道监听器和信道工厂。  
+
+**自定义绑定元素**     
+根据之前创建的数据报信道管理器SimpleDatagramChannelFactory和SimpleDataChannelListener，创建相应的绑定元素SimpleDatagramElement。   
+
+	 public class SimpleDatagramBindingElement:BindingElement
+    {
+        public SimpleDatagramBindingElement()
+        {
+            PrintHelper.Print(this,"SimpleDatagramBindingElement");
+        }
+
+        public override BindingElement Clone()
+        {
+            PrintHelper.Print(this,"Clone");
+            return new SimpleDatagramBindingElement();
+        }
+
+        public override T GetProperty<T>(BindingContext context)
+        {
+            PrintHelper.Print(this,string.Format("GetProperty<{0}>",typeof(T).Name));
+            return context.GetInnerProperty<T>();
+        }
+
+        public override IChannelFactory<TChannel> BuildChannelFactory<TChannel>(BindingContext context)
+        {
+            PrintHelper.Print(this,"BuildChannelFactory<TChannel>");
+            return new SimpleDatagramChanelFactory<TChannel>(context) as IChannelFactory<TChannel>;
+        }
+
+        public override IChannelListener<TChannel> BuildChannelListener<TChannel>(BindingContext context)
+        {
+            PrintHelper.Print(this, "BuildChannelListener<TChannel>");
+            return new SimpleDatagramChannelListener<TChannel>(context) as IChannelListener<TChannel>;
+        }
+    }  
+根据之前创建的会话信道监听器和信道工厂，创建自定义会话绑定元素SimpleSessionBindingElement。  
+
+	public class SimpleSessionBindingElement:BindingElement
+    {
+        public SimpleSessionBindingElement()
+        {
+            PrintHelper.Print(this,"SimpleSessionBindingElement");
+        }
+
+        public override BindingElement Clone()
+        {
+            PrintHelper.Print(this,"Clone");
+            return new SimpleSessionBindingElement();
+        }
+
+        public override T GetProperty<T>(BindingContext context)
+        {
+            PrintHelper.Print(this,string.Format("GetProperty<{0}>",typeof(T).Name));
+            return context.GetInnerProperty<T>();
+        }
+
+        public override IChannelFactory<TChannel> BuildChannelFactory<TChannel>(BindingContext context)
+        {
+            PrintHelper.Print(this, "BuildChannelFactory<TChannel>");
+            return new SimpleSessionChannelFactory<TChannel>(context) as IChannelFactory<TChannel>;
+        }
+
+        public override IChannelListener<TChannel> BuildChannelListener<TChannel>(BindingContext context)
+        {
+            PrintHelper.Print(this, "BuildChannelListener<TChannel>");
+            return new SimpleSessionChannelListener<TChannel>(context) as IChannelListener<TChannel>;
+        }
+    }  
+
+**绑定是绑定元素的有序集合**     
+绑定的目标是实现对信道栈的创建，绑定元素决定信道的创建，绑定对象本身的特性与能力由自身包含的所有绑定元素，及绑定元素之间的先后次序决定。  
+当判断一个绑定类型是否支持某种特性，只需查看该绑定是否具有与该特性相关的绑定元素。 
+WCF中，所有绑定直接或间接继承自抽象基类：System.ServiceModel.Channels.Binding。对于Binding,最重要的是构建组成该绑定对象的所有绑定元素集和。基于绑定元素的创建，通过抽象方法CreateBindingElements实现，具体的绑定类型均要实现该方法。   
+
+	public abstract class Binding:IDefaultCommunicationTimeouts
+	{
+		//其他成员
+		public abstract BindingElementColletion CreateBindingElements();
+	}
+ 
+**创建自定义绑定**  
+之前创建了自定义信道、信道监听器、信道工厂与绑定元素。这些对象只有通过具体的绑定对象才能应用到WCF的运行环境中。   
+自定义绑定中仅包含三个必须绑定元素：**传输绑定元素** 和 **消息编码绑定元素** 及 **自定义绑定元素** ，传输绑定元素采用基于HTTP协议的HttpTransportBindingElement,消息编码采用基于文本编码方式的TextMessageEncodingBindingElement。自定义绑定为SimpleDatagramBinding。  
+
+	public class SimpleDatagramBinding:Binding
+    {
+        private TransportBindingElement _transportBindingElement=new HttpTransportBindingElement();
+        private MessageEncodingBindingElement _messageEncodingBindingElement=new TextMessageEncodingBindingElement();
+        private SimpleDatagramBindingElement _simpleDatagramBindingElement=new SimpleDatagramBindingElement();
+        public override BindingElementCollection CreateBindingElements()
+        {
+            BindingElementCollection elements=new BindingElementCollection();
+            elements.Add(this._simpleDatagramBindingElement);
+            elements.Add(this._messageEncodingBindingElement);
+            elements.Add(this._transportBindingElement);
+            return elements;
+        }
+
+        public override string Scheme {
+            get { return this._transportBindingElement.Scheme; }
+        }
+    }   
+Scheme为只读属性，返回HttpTransportBindingElement的Scheme:http。   
+
+**使用自定义绑定案例**    
+**Contract**   
+	
+		namespace Contract
+	{
+    	[ServiceContract]
+    	public interface IService
+    	{
+        [OperationContract]
+        void Dosomething();
+    	}
+	}
+**Service**   
+		
+		namespace Services
+	{
+    public class Service:IService
+    {
+        public void Dosomething()
+        {
+            Console.WriteLine("Done...");
+        }
+    }
+	}
+**服务寄宿**   
+
+	  static void Main(string[] args)
+        {
+            using (ServiceHost host = new ServiceHost(typeof (Service)))
+            {
+                host.AddServiceEndpoint(typeof (IService), new SimpleDatagramBinding(), "http://localhost:9999/service");
+                host.Open();
+
+                Console.Read();
+            }
+        }
+    }  
+**Clients**  
+
+	static void Main(string[] args)
+        {
+            EndpointAddress address=new EndpointAddress("http://localhost:9999/service");
+            using (
+                ChannelFactory<IService> channelFactory = new ChannelFactory<IService>(new SimpleDatagramBinding(),
+                    address))
+            {
+                IService proxy = channelFactory.CreateChannel();
+                proxy.Dosomething();
+                proxy.Dosomething();
+                (proxy as ICommunicationObject).Close();
+
+                proxy = channelFactory.CreateChannel();
+                proxy.Dosomething();
+                proxy.Dosomething();
+                (proxy as ICommunicationObject).Close();
+            }
+            Console.Read();
+        }
+    } 
+
+服务启动后输出：  
+![](http://i.imgur.com/nXWUE3H.png)  
+绑定对象先通过绑定元素，调用BuildChannelListener< TChannel >创建信道监听器，信道监听器开启后，调用BeginAcceptChannel创建信道，信道开启后监听来自用户请求，并利用创建的信道栈接收请求消息。  
+
+客户端调用服务客户端输出：  
+![](http://i.imgur.com/XQoW0PA.png)
+客户端通过绑定元素，调用BuildChannelFactory< TChannel >创建信道工厂，信道工厂开启后，通过CreatChannel创建信道，通过信道第一次调用时，信道开启，开启的信道可多次用于服务调用。 
+
+客户端调用服务后，服务端的输出：  
+![](http://i.imgur.com/J7BEDrx.png)   
+
+**系统绑定与自定义绑定**
