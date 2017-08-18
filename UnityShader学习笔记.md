@@ -938,6 +938,7 @@ Blinn-Phong逐像素实现：
 					o.pos = mul(UNITY_MATRIX_MVP, v.vertex);
 					o.worldNormal = UnityObjectToWorldNormal(v.normal);
 					o.worldPos = mul(_Object2World, v.vertex).xyz;
+					//对纹理坐标进行变换，对应材质面板的Tiling和Offset调节项
 					o.uv = v.texcoord.xy*_MainTex_ST.xy + _MainTex_ST.zw;
 					//也可以使用内置函数  o.uv=TRANSFORM_TEX(v.texcoord,_MainTex); 计算过程一样
 
