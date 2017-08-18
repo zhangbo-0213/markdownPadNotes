@@ -330,6 +330,184 @@ XAML的标签声明的是对象，一个XAML标签会对应一个对象，这个
 因此使用这个两个类型时，加 **local:** 主窗体上添加了自定义的MyButton,并把UserControl类型的自定义窗体赋值给MyButton的UserWindowType属性。运行效果：  
 ![](http://i.imgur.com/6SXDtbJ.png)   
 点击"Show"   
-![](http://i.imgur.com/v4Z3sTz.png)
+![](http://i.imgur.com/v4Z3sTz.png)   
 
-  
+- **x:Null**    
+显示地对具有默认值的属性而不需要此属性值设置null值。例如：
+
+		<Button Content="OK" Style="{x:Null}"/>  
+
+- **x:Array**  
+x:Array的作用是向使用者暴露一个类型已知的ArrayList的实例，ArrayList内成员类型由x:Array的Type指明。WPF中将包含数据的对象称为数据源。例如：将x:Array当做数据源向一个ListBox提供数据 
+
+		<Window x:Class="About_X_Array.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:About_X_Array"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="350" Width="525">
+    	<Grid Background="LightBlue">
+        <ListBox Margin="5">
+            <ListBox.ItemsSource>
+                <x:Array Type="sys:String">
+                    <sys:String>Tim</sys:String>
+                    <sys:String>Tom</sys:String>
+                    <sys:String>Victor</sys:String>
+                </x:Array>
+            </ListBox.ItemsSource>
+        </ListBox>
+    	</Grid>
+		</Window>  
+
+运行效果：  
+![](http://i.imgur.com/QJ1gGq3.png)   
+
+- **x:Static**  
+x:Static在XAML文档中使用数据类型的static成员。XAML不能编写逻辑代码，使用X:static访问的是数据类型的属性或字段。 
+		
+		<Window x:Class="About_X_Static.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:About_X_Static"
+        mc:Ignorable="d"
+        Title="{x:Static local:MainWindow.windowTitle}" Height="350" Width="525">
+    	<Grid>
+        <TextBlock FontSize="32" Text="{x:Static local:MainWindow.windowText}"/>
+    	</Grid>
+		</Window>
+后台代码：  
+
+		public partial class MainWindow : Window
+    	{
+        public static string windowTitle = "山高月小";
+
+        public static string windowText
+        {
+            get { return "水落石出"; }
+        }
+
+        public MainWindow()
+        {
+            InitializeComponent();
+        }
+    	}
+运行效果：   
+![](http://i.imgur.com/UD5likY.png)  
+
+**XAML指令元素**  
+XAML指令元素只有两个：  
+**x:Code**    
+**x:XData**  
+
+< x:Code >标签，将后台代码中的C#代码放置到XAML中，一般不这么做。   
+
+x:Data是专用标签，用于数据提供。WPF中将包含数据的对象称为数据源，用于将数据源中的数据提供给数据使用者的对象称为数据提供者(Data Provider)。WPF类库中包含多种数据提供者，其中有一个XmlDataProvider，专门用于提供XML化的数据。示例： 
+
+	Window x:Class="About_X_Static.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:About_X_Static"
+        mc:Ignorable="d"
+         Title="{x:Static local:MainWindow.windowTitle}" Height="350" Width="525">
+    <Window.Resources>
+        <XmlDataProvider x:Key="InventoryData" >
+            <x:XData>
+                <Supermarket xmlns="">
+                    <Fruits>
+                        <Fruit>Peach</Fruit>
+                        <Fruit>Banana</Fruit>
+                        <Fruit>Orange</Fruit>
+                    </Fruits>
+                    <Drinks>
+                        <Drink >Tea</Drink>
+                        <Drink >Coca Cola</Drink>
+                        <Drink >PEPSI Cola</Drink>
+                    </Drinks>
+                </Supermarket>
+            </x:XData> 
+        </XmlDataProvider>
+    </Window.Resources>
+    <Grid>
+        <TextBlock FontSize="32" Text="{x:Static local:MainWindow.windowText}" Height="80" Margin="5" TextAlignment="Center" VerticalAlignment="Top"/>
+        <ListBox  ItemsSource="{Binding Source={StaticResource InventoryData},XPath=/Supermarket/Fruits/Fruit}" Width="240" Height="120" HorizontalAlignment="Left" Margin="5">
+            </ListBox>
+        <ListBox  ItemsSource="{Binding Source={StaticResource InventoryData},XPath=/Supermarket/Drinks/Drink}" Width="240" Height="120" HorizontalAlignment="Right" Margin="5">
+        </ListBox>
+    </Grid>
+	</Window>
+在 Window 的资源（<Window.Resources> ）中，有一个 XMLDataProvider 对象。x:Key 表示 Binding 对象中用来引用它的名称。这里，我们创建了 XML 内联数据（数据使用<x:XData>标签包含起来)。   
+在ListBox的Binding中，使用"InventoryData"的StaticResource作为Source。如果某个数据源位于XAML文档中,需要指定该对象是一个静态源（StaticResource），使用Xpath指定XAML文档中的哪个集合填充ListBox。 运行结果：  
+![](http://i.imgur.com/Cb6KsBK.png)
+
+### 控件与布局 ###   
+WPF中是数据驱动UI，数据是核心，是主动的；UI从属于数据并表达数据，是被动的。WPF中控件应该是抽象的数据和行为，而不是控件具体的形象。  
+经常使用的6类控件：   
+
+- **布局控件**   
+可以容纳多个控件或嵌套其他布局控件。Grid、StackPanel、DockPanel等控件都属于此类，拥有共同的父类Panel。  
+
+- **内容控件**  
+只能容纳一个其他控件或布局控件作为它的内容。Window、Button等控件属于此类，由于只能容纳一个控件作为其内容，需要借助布局控件来规划其内容。  
+
+- **带标题内容控件**   
+相当于一个内容控件，但可以加一个标题（Header）,标题部分亦可以容纳一个控件或布局。如GroupBox、TabItem等 
+
+- **条目控件**    
+显示一列数据，数据类型一般都相同，如ListBox、ComboBox等。此类控件在显示集合类型的数据功能较强大。 
+
+- **带标题条目控件**  
+相当于一个条目控件加上一个标题显示区。如TreeViewItem、MenuItem等。这类控件用于显示层级关系数据，节点显示在其Header区域，子节点则显示在其条目控件区域。   
+
+- **特殊内容控件**    
+如TextBox容纳的是字符串、TextBlock可以容纳可自由控制格式的文本、Image容纳图片类型数据。  
+
+6类控件的派生关系图：  
+![](http://i.imgur.com/6Rxj6zl.png)  
+
+FrameworkElement类在UIElement类的基础上添加了许多专门用于WPF开发的API，从FrameworkElement开始才算是进入WPF的开发框架中。   
+WPF的UI元素根据是否可以装载内容、能够装载什么样的内容，可以分为如下类型：  
+
+![](http://i.imgur.com/E9NsqiN.png)  
+
+控件的内容可以直接是数据，也可以是控件。若控件的内容还是控件则为控件的嵌套，嵌套的控件称为子级控件。控件是内存中的对象，控件内容也是内存中的对象。控件通过自身某个属性引用作为其内容的对象，这个属性称为内容属性（Content Property）。不同的控件，内容属性的名称不同，有的叫"Content"有的叫"Child"等，如：  
+
+		<Button Content"OK"/>  
+
+Button控件的内容属性的名字为"Content",也可以写成  
+
+		<Button>
+			<Button.Content>
+				<sys:String>OK</sys:String>
+			</Button.Content>
+		</Button>  
+其内容标签的属性也可以省略：  
+
+		<Button>	
+			<sys:String>OK</sys:String>
+		</Button>  
+
+以StackPanel为例，其内容属性是Children,添加三个TextBox和一个Button，完整的语法：   
+
+		<StackPanel Background="Gray">
+			<StackPanel.Children>
+				<TextBox Margin="5"/>
+				<TextBox Margin="5"/>
+				<TextBox Margin="5"/>
+				<Button Content="OK" Margin="5"/>
+			</StackPanel.Children>
+		</StackPanel>  
+简化后的代码：       
+		
+		<StackPanel Background="Gray">	      
+				<TextBox Margin="5"/>
+				<TextBox Margin="5"/>
+				<TextBox Margin="5"/>
+				<Button Content="OK" Margin="5"/>
+		</StackPanel>  
