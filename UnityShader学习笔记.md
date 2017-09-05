@@ -996,7 +996,7 @@ Blinn-Phong逐像素实现：
 模型顶点自带的法线，定义在模型空间中，若将修改后的模型空间中的表面法线存储在一张纹理中，则为模型空间中的法线纹理   
 - 切线空间的法线纹理      
 ![](https://i.imgur.com/SMbT2IX.png)    
-模型的每一个 顶点有自己对应的切线空间，z轴为顶点的法线方向，x轴为顶点的切线方向，y轴为顶点的副法线方向，由法线和切线的叉积得到，这种纹理被称为切线空间的法线纹理。    
+模型的每一个 顶点有自己对应的切线空间，z轴为顶点的法线方向，x轴为顶点的切线方向，y轴为顶点的副切线方向，由法线和切线的叉积得到，这种纹理被称为切线空间的法线纹理。    
 
 ![](https://i.imgur.com/mjraezn.png)     
 模型空间下的法线纹理颜色比较丰富，这是因为模型空间下各顶点的的法线所在的坐标系为同一个坐标系，而各个顶点法线方向各异，因此映射过后颜色相对比较丰富。    
@@ -1020,4 +1020,108 @@ Blinn-Phong逐像素实现：
 - 可压缩    
 切线空间下的法线纹理中，z轴方向总为正方向，因此可以可以仅存储x,y轴方向，通过计算再得到z方向。  
 
-切线空间下的法线纹理在使用上更加灵活，因此基本上选用切线空间作为法线纹理的坐标系。
+切线空间下的法线纹理在使用上更加灵活，因此基本上选用切线空间作为法线纹理的坐标系。  
+
+**光照模型计算中坐标空间的选择**    
+由于在计算光照过程中，需要在一个统一的空间下进行，而法线纹理所在的空间为切线空间。因此有两种方式选择。   
+ 
+- 将光照方向和视角方向变换到切线空间进行，这个过程在顶点着色器中可以完成。  
+- 将法线方向变换到世界空间中进行，这时需要先对发现纹理进行采样，所以该过程在片元着色器中进行，并在片元着色器中进行一次矩阵运算。  
+
+**切线空间下的光照模型计算**  
+模型-->切线空间下的转换矩阵计算，首先切线空间-->模型空间的变换矩阵为模型顶点的切线方向（x轴）、副切线方向（y轴）、法线方向（z轴）的**按列排列**形式，即模型-->切线空间变换矩阵的逆矩阵，而对于一个方向矢量而言，一个变换矩阵若只存在平移和旋转变换，则该矩阵为一个正交阵，即变换矩阵的逆矩阵与转置矩阵相等，因此模型-->切线空间的变换矩阵为逆矩阵的转置，即将模型顶点的切线方向（x轴）、副切线方向（y轴）、法线方向（z轴）的 **按行排列**。   
+实例代码：  
+
+		// Upgrade NOTE: replaced 'mul(UNITY_MATRIX_MVP,*)' with 'UnityObjectToClipPos(*)'
+	Shader "Custom/Chapter7_NormalMapTangentSpace" {
+	Properties{
+		_Color("Color",Color)=(1,1,1,1)
+		_MainTex("MainTex",2D) ="white" {}
+		_BumpTex("Noraml Tex",2D) = "bump"{} //bump为Unity自带的法线纹理，当没有提供任何法线时，"bump"就对应模型自身的法线信息
+		_BumpScale("BumpScal",Float) = 1.0  //BumpScale代表凹凸程度，值为0时，表示该法线纹理不会对光照产生任何影响
+		_Specular("Specular",Color) = (1,1,1,1)
+		_Gloss("Gloss",Range(8.0,256)) = 20
+	}
+		SubShader{
+			Pass{
+				Tags{"LightMode" = "ForwardBase"}
+
+				CGPROGRAM
+
+				#pragma vertex vert
+				#pragma fragment frag
+				#include "Lighting.cginc"
+
+				fixed4 _Color;
+				sampler2D _MainTex;
+				float4 _MainTex_ST;
+				sampler2D _BumpTex;
+				float4 _BumpTex_ST;
+				float _BumpScale;
+				fixed4 _Specular;
+				float _Gloss;  
+
+				struct a2v {
+					float4 vertex:POSITION;
+					float3 normal:NORMAL;
+					float4 tangent:TANGENT;   //tangent存储顶点的切线方向，float4类型，通过tangent.w分量决定副切线的方向性
+					float4 texcoord:TEXCOORD0;
+				};
+
+				struct v2f {
+					float4 pos:SV_POSITION;
+					float4 uv:TEXCOORD0;
+					float3 lightDir:TEXCOORD1;
+					float3 viewDir:TEXCOORD2;
+				};
+
+				v2f vert(a2v v) {
+					v2f o;
+					o.pos = UnityObjectToClipPos(v.vertex);
+					o.uv.xy = v.texcoord.xy*_MainTex_ST.xy + _MainTex_ST.zw;//(uv.xy存储主纹理坐标变换后的uv坐标)
+					o.uv.zw = v.texcoord.xy*_BumpTex_ST.xy + _BumpTex_ST.zw;//(uv.zw存储法线纹理坐标变换后的uv坐标)
+					//_MainTex和_BumpTex通常会使用同一组纹理坐标（法线纹理贴图由对应纹理贴图生成） 
+
+					float3 binormal = cross(normalize(v.normal),normalize(v.tangent.xyz))*v.tangent.w;
+					float3x3 rotation = float3x3(v.tangent.xyz, binormal,v.normal);
+					//(按行填充，得到的矩阵实际上是模型到切线的逆矩阵的转置矩阵，也就是模型到切线的转换矩阵(正交矩阵))
+					//也可以使用内建宏TANGENT_SPACE_ROTATION得到变换矩阵 
+
+					o.lightDir = mul(rotation, ObjSpaceLightDir(v.vertex)).xyz;
+					o.viewDir = mul(rotation,ObjSpaceViewDir(v.vertex)).xyz;
+
+					return o;
+				} 
+
+				fixed4 frag(v2f i):SV_TARGET {
+					fixed3  tangentLightDir = normalize(i.lightDir);
+					fixed3 tangentViewDir = normalize(i.viewDir);  
+
+					fixed4 packedNormal = tex2D(_BumpTex,i.uv.zw);  //对法线纹理进行采样
+					fixed3 tangentNormal;
+				    //若法线纹理类型没有被设置为bump类型，则进行手动反映射
+					//tangentNormal=(packedNormal.xyz*2-1);
+					//若已经设置为bump类型，可以使用内建函数
+					tangentNormal = UnpackNormal(packedNormal);
+					tangentNormal.xy *= _BumpScale;
+					tangentNormal.z = sqrt(1.0-saturate(dot(tangentNormal.xy,tangentNormal.xy)));
+
+					fixed3 albedo = _Color.rgb*tex2D(_MainTex,i.uv.xy);
+					fixed3 ambient = UNITY_LIGHTMODEL_AMBIENT.xyz*albedo;
+					fixed3 diffuse = _LightColor0.rgb*albedo*max(0,dot(tangentNormal,tangentLightDir));
+					fixed3 halfDir = normalize(tangentLightDir+tangentViewDir);
+					fixed3 specular = _LightColor0.rgb*_Specular.rgb*pow(max(0,dot(tangentNormal,halfDir)),_Gloss);
+
+					return fixed4(ambient+diffuse+specular,1.0);
+				}
+			ENDCG
+		}
+		}
+			FallBack "Specular"
+	}  
+
+实例效果：     
+![](https://i.imgur.com/GpVUUi2.png)  
+![](https://i.imgur.com/qw5MWv5.png)
+
+
