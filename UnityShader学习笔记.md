@@ -890,7 +890,8 @@ Blinn-Phong逐像素实现：
 ![](http://i.imgur.com/LkqnRkd.png)  
 
 ### 基础纹理 ###
-通常使用一张纹理来代替物体的漫反射颜色。使用纹理的Shader中，需要对纹理进行采样。  
+通常使用一张纹理来代替物体的漫反射颜色。使用纹理的Shader中，需要对纹理进行采样。
+使用CG的tex2D(_MainTex,uv)函数进行纹理采样，第一个参数是需要被采样的纹理，第二是float2类型的纹理坐标，该坐标在顶点着色器中由_MainTex_ST对定点纹理坐标进行变换得到。  
 
 	Shader "Custom/Chapter7_SingleTexture" {
 		Properties{
@@ -948,7 +949,7 @@ Blinn-Phong逐像素实现：
 					fixed3 worldNormal = normalize(i.worldNormal);
 					fixed3 worldLightDir = normalize(UnityWorldSpaceLightDir(i.worldPos));
 
-					//使用tex2D做纹理采样
+					//使用tex2D做纹理采样，将采样结果和颜色属性_Color相乘作为反射率
 					fixed3 albedo = tex2D(_MainTex,i.uv).rgb*_Color.rgb;
 
 					fixed3 ambient = UNITY_LIGHTMODEL_AMBIENT.xyz*albedo;
@@ -970,4 +971,19 @@ Blinn-Phong逐像素实现：
 实现效果：  
 
 ![](http://i.imgur.com/y27fUwB.png)   
-![](http://i.imgur.com/WQ6pMfe.png)
+![](http://i.imgur.com/WQ6pMfe.png)      
+
+**Warp Mode**属性  
+每张纹理在导入到Unity后，在纹理的检视面板中有Warp Mode属性，该属性决定了当纹理坐标超过[0,1]范围后如何被平铺，有Repeat（重复平铺）,Clamp（截取平铺）截取平铺是当超过1后的纹理坐标的对应的顶点颜色值均为1处的值。
+
+### 凹凸映射 ###
+凹凸映射的目的是使用一张纹理来修改模型表面的法线。这种方法不会真正该改变模型顶点位置，使模型看起来具有凹凸的效果，这点从模型的轮廓可以看出来。   
+凹凸映射的两种方法：  
+
+- **高度纹理**   
+使用一张高度纹理来模拟表面位移，得到一个修改后的法线值，该方法也叫“高度映射"。  
+高度图中存储的是强度值，用于表示模型表面的海拔高度。颜色越浅表示越向外凸起，颜色越深越向里凹。实时计算中，不能直接得到表面法线，需要由像素的灰度值计算得到，需要消耗更多性能。
+- **法线纹理**  
+使用一张法线纹理直接存储表面法线，该方法也叫“法线映射”。   
+法线纹理中存储的是表面的法线方向，法线矢量值范围[-1,1]，纹理中的颜色值范围[0,1]，因此将法线存储在一张纹理中，有一个映射过程：   
+pixel=(normal+1)/2
