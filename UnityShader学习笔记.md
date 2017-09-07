@@ -1226,7 +1226,93 @@ Blinn-Phong逐像素实现：
 实例效果：  
 ![](https://i.imgur.com/S2IxJkN.png)    
 ![](https://i.imgur.com/GQ2ibaD.png)    
-中间为切线空间下计算的结果，右边为世界空间下的计算的结果，表现效果上并没有区别。
+中间为切线空间下计算的结果，右边为世界空间下的计算的结果，表现效果上并没有区别。  
+
+### 渐变纹理 ###
+纹理的最初使用，是为了给一个模型表面上色。实际上，纹理可以用来存储表面属性，如之前的法线纹理将法线信息存储在一张纹理中。通过纹理也可以控制漫反射光照结果。   
+渐变纹理控制漫反射实例代码：    
+		
+		Shader "Custom/Chapter7_RampTexture" {
+		Properties{
+			_Color("Color",Color)=(1,1,1,1)
+			_RampTex("RampTex",2D) = "white"{}
+			_Specular("Specular",Color) = (1,1,1,1)
+			_Gloss("Gloss",Range(8.0,256)) = 20
+		}
+			SubShader{
+				Pass{
+				Tags{"LightMode" = "ForwardBase"}
+
+				CGPROGRAM
+				#pragma vertex vert
+				#pragma fragment frag
+				#include  "Lighting.cginc"
+
+					fixed4 _Color;
+					sampler2D _RampTex;
+					float4 _RampTex_ST;
+					fixed4 _Specular;
+					float _Gloss;
+
+					struct a2v {
+						float4 vertex:POSITION;
+						float3 normal:NORMAL;
+						fixed4 texcoord : TEXCOORD0;
+					}; 
+
+					struct v2f {
+						float4 pos:SV_POSITION;
+						float3 worldNormal:TEXCOORD0;
+						float3 worldPos:TEXCOORD1;
+						float2 uv:TEXCOORD2;
+					};
+
+					v2f vert(a2v v) {
+						v2f o;
+						o.pos = UnityObjectToClipPos(v.vertex);
+						o.worldNormal = UnityObjectToWorldNormal(v.normal);
+						o.worldPos = mul(unity_ObjectToWorld,v.vertex).xyz;
+						o.uv = v.texcoord.xy*_RampTex_ST.xy + _RampTex_ST.zw;
+
+						return o;
+					}
+
+					fixed4 frag(v2f i) :SV_Target{
+						fixed3 worldNormal = normalize(i.worldNormal);
+						fixed3 worldLightDir = normalize(UnityWorldSpaceLightDir(i.worldPos));
+						fixed3 worldViewDir = normalize(UnityWorldSpaceViewDir(i.worldPos));
+				
+						fixed3 ambient = UNITY_LIGHTMODEL_AMBIENT.xyz;
+						fixed halfLambert = 0.5*dot(worldNormal, worldLightDir) + 0.5;
+						fixed3 diffuseColor = tex2D(_RampTex, fixed2(halfLambert, halfLambert))*_Color.rgb;
+						fixed3 diffuse = diffuseColor*_LightColor0.rgb;  
+
+						fixed3 halfDir = normalize(worldLightDir+worldViewDir);
+						fixed3 specular = _LightColor0.rgb*_Specular.rgb*pow(max(0,dot(halfDir,worldNormal)),_Gloss);
+
+						return fixed4(ambient+diffuse+specular,1.0);
+					}
+			ENDCG
+			}
+		}
+	FallBack "Specular"
+	}
+
+实际效果：  
+![](https://i.imgur.com/PpXQqvy.png)		  
+分别对应的渐变纹理：  
+![](https://i.imgur.com/e8av7AN.png)   
+
+Shader代码中值得注意的地方：
+	
+		fixed halfLambert = 0.5*dot(worldNormal, worldLightDir) + 0.5;
+		fixed3 diffuseColor = tex2D(_RampTex, fixed2(halfLambert, halfLambert))*_Color.rgb;  
+
+
+
+- 这里进行纹理采样的uv坐标为半兰伯特值，将法线与光照方向的点积映射到[0,1]也就是说原本光照不到的地方会取到渐变纹理中靠左下部分的颜色。  
+- 由于采样时uv坐标都是相等的，因此取到的颜色应该是对应纹理坐标[0,1]内的对角线上的颜色。  
+- 还有一点值得注意的是，当采用突变性的渐变纹理时（如第一张渐变纹理），漫反射的结果是阴影之间更加分明，类似于卡通效果。
 
 
 		
