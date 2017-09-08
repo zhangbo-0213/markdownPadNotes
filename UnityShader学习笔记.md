@@ -1312,7 +1312,113 @@ Shader代码中值得注意的地方：
 
 - 这里进行纹理采样的uv坐标为半兰伯特值，将法线与光照方向的点积映射到[0,1]也就是说原本光照不到的地方会取到渐变纹理中靠左下部分的颜色。  
 - 由于采样时uv坐标都是相等的，因此取到的颜色应该是对应纹理坐标[0,1]内的对角线上的颜色。  
-- 还有一点值得注意的是，当采用突变性的渐变纹理时（如第一张渐变纹理），漫反射的结果是阴影之间更加分明，类似于卡通效果。
+- 还有一点值得注意的是，当采用突变性的渐变纹理时（如第一张渐变纹理），漫反射的结果是阴影之间更加分明，类似于卡通效果。  
+
+### 遮罩纹理 ###
+遮罩纹理应用于很多商业游戏中，用来保护某些区域，免于某些修改。两个常见的应用：     
+
+- 使模型某些区域的高光强烈，某些区域较弱。而不是将高光反射应用到模型的所有地方，使用遮罩纹理可以更加细腻的控制高光的光照效果。 
+- 制作地形材质时需要混合多张图片，例如表现草地，石子，裸露土地的纹理。使用遮罩纹理可以控制如何混合这些纹理。  
+
+使用者遮罩纹理的流程：通过采样得到遮罩纹理的纹素值，然后使用其中某个通道的值与某种表面属性进行相乘，当该通道值为0时，可以保护表面不受属性影响。  
+
+实例代码：   
+
+		Shader "Custom/Chapter7_MaskTexture" {
+		Properties{
+			_Color("Color",Color)=(1,1,1,1)
+			_MainTex("MainTex",2D) = "white"{}
+			_BumpTex("BumpTex",2D) = "bump"{}
+			_BumpScale("BumpScale",Float)=1.0
+			_SpecularMask("SpecularMask",2D) = "white"{}
+			_SpecularMaskScale("SpecularMaskScale",Float) = 1.0
+			_Specular("Specular",Color) = (1,1,1,1)
+			_Gloss("Gloss",Range(8.0,256)) = 20.0
+		}
+			SubShader{
+				Pass{
+					Tags{"LightMode" = "ForwardBase"}
+
+					CGPROGRAM
+					#pragma vertex vert
+					#pragma fragment frag
+					#include  "Lighting.cginc"
+
+					fixed4 _Color;
+					sampler2D _MainTex;
+					float4 _MainTex_ST;     //主纹理，法线纹理，遮罩纹理的纹理坐标用一个变量来存储
+					sampler2D _BumpTex;
+					float _BumpScale;
+					sampler2D _SpecularMask;
+					float _SpecularMaskScale;
+					fixed4 _Specular;
+					float _Gloss;
+
+					struct a2v {
+						float4 vertex:POSITION;
+						float3 normal:NORMAL;
+						float4 tangent:TANGENT;
+						float4 texcoord:TEXCOORD0;
+					};
+
+					struct v2f {
+						float4 pos:SV_POSITION;
+						float2 uv:TEXCOORD0;
+						float3 lightDir:TEXCOORD1;
+						float3 viewDir:TEXCOORD2;
+
+					};
+
+					v2f vert(a2v v) {
+						v2f o;
+						o.pos = UnityObjectToClipPos(v.vertex);
+						o.uv = v.texcoord*_MainTex_ST.xy + _MainTex_ST.zw;  
+
+						float3 binormal = cross(normalize(v.normal),normalize(v.tangent))*v.tangent.w;
+						float3x3 rotation = float3x3(v.tangent.xyz,binormal,v.normal);
+
+						o.lightDir = mul(rotation,ObjSpaceLightDir(v.vertex)).xyz;
+						o.viewDir = mul(rotation,ObjSpaceViewDir(v.vertex)).xyz;
+
+						return o;
+					}
+
+					fixed4 frag(v2f i) :SV_Target{
+						fixed3 tangentLightDir = normalize(i.lightDir);
+						fixed3 tangentViewDir = normalize(i.viewDir);
+
+						fixed3 tangentNormal = UnpackNormal(tex2D(_BumpTex,i.uv));
+						tangentNormal.xy *= _BumpScale;
+						tangentNormal.z = sqrt(1.0-saturate(dot(tangentNormal.xy,tangentNormal.xy)));
+
+						fixed3 albedo = tex2D(_MainTex,i.uv)*_Color.rgb;
+						fixed3 ambient = UNITY_LIGHTMODEL_AMBIENT.xyz*albedo;
+						fixed3 diffuse = _LightColor0.rgb*albedo*max(0,dot(tangentLightDir,tangentNormal));
+
+						fixed3 halfDir = normalize(tangentLightDir+tangentViewDir);
+						fixed3 specularMask = tex2D(_SpecularMask, i.uv).r*_SpecularMaskScale;//使用其中一个通道r来影响高光的光照效果
+						fixed3 specular=_LightColor0.rgb*_Specular.rgb*pow(max(0,dot(halfDir,tangentNormal)),_Gloss)*specularMask;
+
+						return fixed4(ambient+diffuse+specular,1.0);
+					}
+				ENDCG
+			}
+		}
+	FallBack "Specular"
+	}  
+这里有两点需要注意的地方：    
+
+
+
+- 主纹理，法线纹理和遮罩纹理的纹理坐标都来自主纹理的uv坐标，也就是说当修改材质面板的主纹理的缩放和偏移值时，法线纹理和遮罩纹理都会相应变化，而修改法线纹理和遮罩纹理的缩放偏移值是不会对计算结果产生任何影响的，事实上测试的结果也是这样。   
+- 遮罩纹理的计算过程中只用到了纹理的r通道，其他3个通道其实可以用来存储更多的设置值。  
+
+实例效果：  
+![](https://i.imgur.com/QtJQCYq.png)
+![](https://i.imgur.com/www5pFO.png)  
+
+通过遮罩处理后，高光的效果不是全部反映到整个区域，而是由r通道进行选择，遮罩纹理中全黑色的地方，即r=0处是不会受到高光影响的，这也是为什么高光部分的裂缝处的凹槽更加清晰。 
+
 
 
 		
