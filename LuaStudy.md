@@ -52,11 +52,23 @@ Lua是动态类型语言，变量不要类型定义，只需要为类型赋值�
 
 通过Type函数测试数据类型    
 
-	print(type("Hello World!"))   --string
-	print(type(10.4*3))                 --number
-	print(type(print))                   --function
-	print(type(type))		  	     --function
-	print(type(true))			     --boolean
-	print(type(nil))                       --nil
-	print(type(type(nil)))		     --string
+	print(type("Hello World!"))    --string
+	print(type(10.4*3))                  --number
+	print(type(print))                    --function
+	print(type(type))		  	      --function
+	print(type(true))			      --boolean
+	print(type(nil))                        --nil
+	print(type(type(nil)))		      --string
+nil类型表示一个无效值，对于全局变量和table，nil还有**清除的作用**，释放变量所占用的内存空间 
 
+	name="bobo"
+	print(name)
+	name=nil
+	print(name)  
+
+	table1={key1="value1",key2="value2"}
+	print(table1.key1)
+	table1.key1=nil
+	print(table1.key1)
+	table1=nil
+	print(table1)
