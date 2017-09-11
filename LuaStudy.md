@@ -71,4 +71,27 @@ nil类型表示一个无效值，对于全局变量和table，nil还有**清除�
 	table1.key1=nil
 	print(table1.key1)
 	table1=nil
-	print(table1)
+	print(table1)   
+
+boolean类型的可选值为true或false，Lua将nil视为false，其他有效值视为true   
+
+	print(type(true))
+	print(type(false))
+	print(type(nil))
+
+	if true then
+	print("判断条件为真")
+	end
+
+	if nil then
+	print("nil 为真")
+	else
+	print("nil为假")
+	end
+输出：   
+
+	boolean
+	boolean
+	nil
+	判断条件为真
+	nil为假
