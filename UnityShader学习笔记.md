@@ -1470,5 +1470,85 @@ Unity使用**渲染队列(render queue)**解决渲染顺序问题。通过使用
 	}
 使用透明度混合是需要**关闭深度写入**的。
 		
+**透明度测试(Alpha Test)实例**   
+使用透明度测试的方式实现透明是对一个片元的透明度进行判断，如果小于某一个阈值，则舍弃该片元，作为完全透明处理。通常在片元着色器中使用**clip函数**进行透明度测试。函数定义：  
 
+	函数：void clip(float4 x) ; void clip(float3 x) ; void clip(float2 x) ; void clip(float x)
+	参数 ：裁剪时使用的标量或矢量条件
+	描述：如果给定参数的任何一个分量是负数，就舍弃当前像素的输出颜色，即
+	
+	void clip(float x){
+		if(any(x<0))
+			discard;
+	} 
+实例代码：  
+
+	Shader "Custom/Chapter8_AlphaTest" {
+	Properties{
+		_Color("Color",Color)=(1,1,1,1)
+		_MainTex("MainTex",2D)="white"{}
+		_Cutoff("Alpha Cutoff",Range(0,1))=0.5  //在材质面板显示和调节透明度测试的控制阈值
+	}
+	SubShader{
+		Tags{"Queue"="AlphaTest" "IgnoreProjector"="True" "RenderType"="TransparentCutout"}
+		//通常，使用透明度测试的Shader都应该在SubShader中设置这三个标签
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "Lighting.cginc"
+
+			fixed4 _Color;
+			sampler2D _MainTex;
+			float4 _MainTex_ST;
+			fixed _Cutoff;
+
+			struct a2v{
+				float4 vertex:POSITION;
+				float3 normal:NORMAL;
+				float4 texcoord:TEXCOORD0;
+			};
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				float3 worldNormal:TEXCOORD0;
+				float3 worldPos:TEXCOORD1;
+				float2 uv:TEXCOORD2;
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.worldNormal=UnityObjectToWorldNormal(v.normal);
+				o.worldPos=mul(unity_ObjectToWorld,v.vertex).xyz;
+				o.uv=TRANSFORM_TEX(v.texcoord,_MainTex);
+
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				fixed3 worldNormal=normalize(i.worldNormal);
+				fixed3 worldLightDir=normalize(UnityWorldSpaceLightDir(i.worldPos));
+
+				fixed4 texColor=tex2D(_MainTex,i.uv);
+
+				clip(texColor.a-_Cutoff);
+				//clip函数做透明度的比较后进行裁剪操作
+				fixed3 albedo=texColor.rgb*_Color;
+				fixed3 ambient=UNITY_LIGHTMODEL_AMBIENT.xyz*albedo;
+				fixed3 diffuse=_LightColor0.rgb*albedo*max(0,dot(worldNormal,worldLightDir));
+
+				return fixed4(ambient+diffuse,1.0);
+
+			}
+			ENDCG
+		}
+	}
+	FallBack "Diffuse"
+	}  
+实例效果：  
+![](https://i.imgur.com/MNRm0Pz.png)  
+![](https://i.imgur.com/vDKKHli.png)   
+从左往右阈值依次是0.55,0.65,0.75，漫反射贴图自带透明通道a，使用clip函数根据传入的透明度与阈值的插值判断片元舍弃还是按照不透明处理，可以看出透明度测试效果要么为全透明，要么为完全不透明。
 
