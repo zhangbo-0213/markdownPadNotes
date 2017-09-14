@@ -1552,3 +1552,81 @@ Unity使用**渲染队列(render queue)**解决渲染顺序问题。通过使用
 ![](https://i.imgur.com/vDKKHli.png)   
 从左往右阈值依次是0.55,0.65,0.75，漫反射贴图自带透明通道a，使用clip函数根据传入的透明度与阈值的插值判断片元舍弃还是按照不透明处理，可以看出透明度测试效果要么为全透明，要么为完全不透明。
 
+**透明度混合**    
+透明度混合可以得到真正的半透明效果，使用指定的混合因子对当前片元颜色和颜色缓冲区中的颜色进形混合，得到新的颜色。透明度混合需要关闭深度写入，因此需要注意渲染的顺序。    
+混合需要使用混合命令Blend。Blend是Unity提供的设置混合模式的命令。Blend的语义：   
+![](https://i.imgur.com/rcNSghf.png)  
+
+实例代码： 
+
+	Shader "Custom/Chapter8_AlphaBlend" {
+	Properties{
+		_Color("Color",Color)=(1,1,1,1)
+		_MainTex("MainTex",2D)="white"{}
+		_AlphaScale("AlphaScale",Range(0,1))=1
+	}
+	SubShader{
+		Tags{"Queue"="Transparent" "IgnoreProjector"="True" "RenderType"="Transparent"}
+		//"RenderType"="Transparent"指明该shader为使用了透明度混合的shader
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+
+			Zwrite Off  //关闭深度写入
+			Blend SrcAlpha OneMinusSrcAlpha  //设置混合因子为源的透明度 
+
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "Lighting.cginc"
+
+			fixed4 _Color;
+			sampler2D _MainTex;
+			float4 _MainTex_ST;
+			fixed   _AlphaScale;
+
+			struct a2v{
+				float4 vertex:POSITION;
+				float3 normal:NORMAL;
+				float4 texcoord:TEXCOORD0;
+			};
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				float3 worldPos:TEXCOORD0;
+				float3 worldNormal:TEXCOORD1;
+				float2 uv:TEXCOORD2;
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				o.pos=mul(UNITY_MATRIX_MVP,v.vertex);
+				o.worldPos=mul(unity_ObjectToWorld,v.vertex).xyz;
+				o.worldNormal=UnityObjectToWorldNormal(v.normal);
+				o.uv=TRANSFORM_TEX(v.texcoord,_MainTex);
+
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				fixed3 worldNormal=normalize(i.worldNormal);
+				fixed3 worldLightDir=normalize(UnityWorldSpaceLightDir(i.worldPos));
+
+				fixed4 texColor=tex2D(_MainTex,i.uv);
+				
+				fixed3 albedo=texColor.rgb*_Color.rgb;
+				fixed3 ambient=UNITY_LIGHTMODEL_AMBIENT.xyz*albedo;
+				fixed3 diffuse=_LightColor0.rgb*albedo*max(0,dot(worldNormal,worldLightDir));
+
+				return fixed4(ambient+diffuse,texColor.a*_AlphaScale);
+			}
+			ENDCG
+		}
+	}
+	FallBack "Transparent/VertexLit"
+	}  
+
+实例效果：  
+![](https://i.imgur.com/yNDpIfA.png)    
+![](https://i.imgur.com/HF3yWbv.png)    
+从左至右AlphaScale值依次是 1 0.5 0.2
+
