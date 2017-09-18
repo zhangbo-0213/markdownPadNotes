@@ -1869,6 +1869,104 @@ ColorMask用于设置颜色通道的写掩码，语义：
 		}   
 透明度混合若想看到物体内部结构，需要两个Pass，先对背面完成渲染，在对正面进行渲染。  
 实例效果：  
-![](https://i.imgur.com/JWY0ORA.png)      
+![](https://i.imgur.com/JWY0ORA.png)       
+
+**应用正面剔除的描边效果**   
+使用两个Pass可以实现模型描边效果，一个Pass正常渲染图元，另一个Pass中剔除正面，并在裁剪空间对定点进行移动，移动的方向为顶点对应的法线方向，这样在经过逐片元操作后背面会生成面片，由于Pass按照顺序渲染，因此只有超出模型边缘的面片会显示出来，然后指定面片颜色，即可实现类描边效果。    
+实例代码：  
+
+	Shader "Custom/GeometryEdge" {
+	Properties{
+		_Color("Color",Color)=(1,1,1,1)
+		_EdgeColor("EdgeColor",Color)=(1,1,1,1)
+		_EdgeFactor("EdgeFactor",Range(0,6))=3
+		_MainTex("MainTex",2D)="white"{}
+	}
+	SubShader{
+
+		Pass{
+			Tags{"LightMode"="ForwardBase"}		
+			CGPROGRAM	
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "Lighting.cginc"  
+
+			fixed4 _Color;
+			sampler2D _MainTex;
+			float4 _MainTex_ST;
+
+			struct a2v{
+				float4 vertex:POSITION;
+				float3 normal:NORMAL;
+				float4 texcoord:TEXCOORD0;
+			};
+			struct v2f{
+				float4 pos:SV_POSITION;
+				float2 uv:TEXCOORD0;
+				float3 worldNormal:TEXCOORD1;
+				float4 worldPos:TEXCOORD2;
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.uv=TRANSFORM_TEX(v.texcoord,_MainTex);
+				o.worldPos=mul(unity_ObjectToWorld,v.vertex);
+				o.worldNormal=UnityObjectToWorldNormal(v.normal);
+
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				fixed3 worldNormal=normalize(i.worldNormal);
+				fixed3 worldLightDir=normalize(UnityWorldSpaceLightDir(i.pos));
+
+				fixed3 albedo=tex2D(_MainTex,i.uv).rgb*_Color.rgb;
+				fixed3 ambient=UNITY_LIGHTMODEL_AMBIENT.xyz*albedo;
+				fixed3 diffuse=(_LightColor0.rgb)*albedo*max(0,dot(worldNormal,worldLightDir));
+
+				return fixed4(ambient+diffuse,1.0);
+			}
+			ENDCG
+		}
+
+		Pass{
+			Tags{"LightMode"="ForwardBase"}		
+			Cull Front   //剔除正面
+
+			CGPROGRAM	
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "UnityCG.cginc"  
+
+			fixed4 _EdgeColor;
+			float   _EdgeFactor;
+
+			float4 vert(appdata_base v):SV_POSITION{
+		
+				float4 pos=UnityObjectToClipPos(v.vertex);
+				//将法线转换到裁剪空间
+				float3 clipNormal=mul((float3x3)UNITY_MATRIX_MVP,v.normal);
+				//裁剪空间定点朝法线方向进行移动
+				pos.xy+=_EdgeFactor*clipNormal.xy;
+
+				return pos;
+			}
+
+			fixed4 frag():SV_Target{	
+				return _EdgeColor;
+			}
+			ENDCG
+		}
+	}
+	FallBack "Diffuse"
+}
+
+实例效果：       
+![](https://i.imgur.com/dQlUjDT.png)         
+![](https://i.imgur.com/2pjCvqs.png)      
+这里值得注意的是，描边效果实际上在第二个Pass过后生成的是面片而非线条，这一点在模型表面顶点法线变化剧烈的地方可以看出来，例如CUBE的顶点处。
+
+
 
 	
