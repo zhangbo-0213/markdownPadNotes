@@ -1628,5 +1628,95 @@ Unity使用**渲染队列(render queue)**解决渲染顺序问题。通过使用
 实例效果：  
 ![](https://i.imgur.com/yNDpIfA.png)    
 ![](https://i.imgur.com/HF3yWbv.png)    
-从左至右AlphaScale值依次是 1 0.5 0.2
+从左至右AlphaScale值依次是 1 0.5 0.2   
 
+**开启深度写入的半透明效果**   
+当模型本身具有复杂的遮挡关系或者包含复杂非凸网格时，未开启深度写入，会有因为排序错误产生的错误透明效果。一种解决办法是**使用两个Pass**来对模型进行渲染，第一个Pass开启深度写入，不输出颜色，第二个进行正常透明度混合。  
+
+实例代码：   
+	
+	Shader "Custom/Chapter8_AlphaBlendZwrite" {
+	Properties{
+		_Color("Color",Color)=(1,1,1,1)
+		_MainTex("MainTex",2D)="white"{}
+		_AlphaScale("AlphaScale",Range(0,1))=1
+	}
+	SubShader{
+		Tags{"Queue"="Transparent" "IgnoreProjector"="True" "RenderType"="Transparent"}
+		//"RenderType"="Transparent"指明该shader为使用了透明度混合的shader
+		
+		//开启深度写入的Pass是为了将模型的深度信息写入深度缓冲中，从而剔除模型中被自身遮挡的片元
+		Pass{
+			ZWrite On
+			ColorMask 0
+		}
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+
+			Zwrite Off  //关闭深度写入
+			Blend SrcAlpha OneMinusSrcAlpha  //设置混合因子为源的透明度 
+
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "Lighting.cginc"
+
+			fixed4 _Color;
+			sampler2D _MainTex;
+			float4 _MainTex_ST;
+			fixed   _AlphaScale;
+
+			struct a2v{
+				float4 vertex:POSITION;
+				float3 normal:NORMAL;
+				float4 texcoord:TEXCOORD0;
+			};
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				float3 worldPos:TEXCOORD0;
+				float3 worldNormal:TEXCOORD1;
+				float2 uv:TEXCOORD2;
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.worldPos=mul(unity_ObjectToWorld,v.vertex).xyz;
+				o.worldNormal=UnityObjectToWorldNormal(v.normal);
+				o.uv=TRANSFORM_TEX(v.texcoord,_MainTex);
+
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				fixed3 worldNormal=normalize(i.worldNormal);
+				fixed3 worldLightDir=normalize(UnityWorldSpaceLightDir(i.worldPos));
+
+				fixed4 texColor=tex2D(_MainTex,i.uv);
+				
+				fixed3 albedo=texColor.rgb*_Color.rgb;
+				fixed3 ambient=UNITY_LIGHTMODEL_AMBIENT.xyz*albedo;
+				fixed3 diffuse=_LightColor0.rgb*albedo*max(0,dot(worldNormal,worldLightDir));
+
+				return fixed4(ambient+diffuse,texColor.a*_AlphaScale);
+			}
+			ENDCG
+		}
+	}
+	FallBack "Transparent/VertexLit"
+	}   
+在第一个Pass中  
+	
+	Pass{
+			ZWrite On
+			ColorMask 0
+		}   
+ColorMask用于设置颜色通道的写掩码，语义：  
+
+	ColorMask  RGB | A | 0  
+设置为0时，表示该Pass不写入任何颜色通道，不会输出任何颜色。  
+
+实例效果： 
+![](https://i.imgur.com/9dVufuv.png)   
+左侧为一个Pass的透明度混合效果，可以看到模型内部的透明效果显示关系出现混乱，右侧为添加深度写入的Pass后，模型内部的遮挡效果正常。
