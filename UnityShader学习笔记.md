@@ -1719,4 +1719,156 @@ ColorMask用于设置颜色通道的写掩码，语义：
 
 实例效果：    
 ![](https://i.imgur.com/9dVufuv.png)   
-左侧为一个Pass的透明度混合效果，可以看到模型内部的透明效果显示关系出现混乱，右侧为添加深度写入的Pass后，模型内部的遮挡效果正常。
+左侧为一个Pass的透明度混合效果，可以看到模型内部的透明效果显示关系出现混乱，右侧为添加深度写入的Pass后，模型内部的遮挡效果正常。  
+
+**双面渲染的透明效果**  
+前面实现的透明效果中，透明度测试和透明度混合均无法看到物体内部结构。这是由于默认情况下渲染引擎剔除了物体背面的（相对于摄像机的方向）渲染图元，通过使用**Cull**命令控制需要剔除的面或得到双面渲染效果。 **Cull**语义：  
+
+	Cull | Back | Front | Off     
+设置为Back 背对摄像机的图元不会被渲染，设置为Front朝向摄像机的图元不会被渲染，设置为Off，双面渲染。  
+
+
+- **透明度测试双面渲染**   
+实例代码：   
+	
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+
+			Cull Off   //开启双面渲染效果     
+			}   
+透明度测试的双面渲染只需在原来基础上添加**Cull Off**的命令  
+实例效果：     
+![](https://i.imgur.com/NpIyU18.png)    
+左侧为双面渲染效果，可以看到内部结构，右边为默认剔除背面渲染图元效果。  
+
+- **透明度混合双面渲染**    
+由于透明度混合是关闭了深度写入的，因此如果直接关闭剔除，并不能保证一个物体的正面和背面按照正确定的渲染顺序进行渲染，可能得到错误效果。因此实现双面透明度混合可以通过两个Pass，先剔除正面，渲染背面，再剔除背面渲染正面。  
+实例代码：  
+
+		Shader "Custom/Chapter8_AlphaBlendBothSide" {
+		Properties{
+			_Color("Color",Color)=(1,1,1,1)
+			_MainTex("MainTex",2D)="white"{}
+			_AlphaScale("AlphaScale",Range(0,1))=1
+		}
+		SubShader{
+			Tags{"Queue"="Transparent" "IgnoreProjector"="True" "RenderType"="Transparent"}
+		//"RenderType"="Transparent"指明该shader为使用了透明度混合的shader
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+
+			Cull Front  //先渲染背面
+
+			Zwrite Off  //关闭深度写入
+			Blend SrcAlpha OneMinusSrcAlpha  //设置混合因子为源的透明度 
+
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "Lighting.cginc"
+
+			fixed4 _Color;
+			sampler2D _MainTex;
+			float4 _MainTex_ST;
+			fixed   _AlphaScale;
+
+			struct a2v{
+				float4 vertex:POSITION;
+				float3 normal:NORMAL;
+				float4 texcoord:TEXCOORD0;
+			};
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				float3 worldPos:TEXCOORD0;
+				float3 worldNormal:TEXCOORD1;
+				float2 uv:TEXCOORD2;
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.worldPos=mul(unity_ObjectToWorld,v.vertex).xyz;
+				o.worldNormal=UnityObjectToWorldNormal(v.normal);
+				o.uv=TRANSFORM_TEX(v.texcoord,_MainTex);
+
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				fixed3 worldNormal=normalize(i.worldNormal);
+				fixed3 worldLightDir=normalize(UnityWorldSpaceLightDir(i.worldPos));
+
+				fixed4 texColor=tex2D(_MainTex,i.uv);
+				
+				fixed3 albedo=texColor.rgb*_Color.rgb;
+				fixed3 ambient=UNITY_LIGHTMODEL_AMBIENT.xyz*albedo;
+				fixed3 diffuse=_LightColor0.rgb*albedo*max(0,dot(worldNormal,worldLightDir));
+
+				return fixed4(ambient+diffuse,texColor.a*_AlphaScale);
+			}
+			ENDCG
+		}
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+
+			Cull Back //再渲染正面
+
+			Zwrite Off  //关闭深度写入
+			Blend SrcAlpha OneMinusSrcAlpha  //设置混合因子为源的透明度 
+
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "Lighting.cginc"
+
+			fixed4 _Color;
+			sampler2D _MainTex;
+			float4 _MainTex_ST;
+			fixed   _AlphaScale;
+
+			struct a2v{
+				float4 vertex:POSITION;
+				float3 normal:NORMAL;
+				float4 texcoord:TEXCOORD0;
+			};
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				float3 worldPos:TEXCOORD0;
+				float3 worldNormal:TEXCOORD1;
+				float2 uv:TEXCOORD2;
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.worldPos=mul(unity_ObjectToWorld,v.vertex).xyz;
+				o.worldNormal=UnityObjectToWorldNormal(v.normal);
+				o.uv=TRANSFORM_TEX(v.texcoord,_MainTex);
+
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				fixed3 worldNormal=normalize(i.worldNormal);
+				fixed3 worldLightDir=normalize(UnityWorldSpaceLightDir(i.worldPos));
+
+				fixed4 texColor=tex2D(_MainTex,i.uv);
+				
+				fixed3 albedo=texColor.rgb*_Color.rgb;
+				fixed3 ambient=UNITY_LIGHTMODEL_AMBIENT.xyz*albedo;
+				fixed3 diffuse=_LightColor0.rgb*albedo*max(0,dot(worldNormal,worldLightDir));
+
+				return fixed4(ambient+diffuse,texColor.a*_AlphaScale);
+			}
+			ENDCG
+		}
+		}
+		FallBack "Transparent/VertexLit"
+		}   
+透明度混合若想看到物体内部结构，需要两个Pass，先对背面完成渲染，在对正面进行渲染。  
+实例效果：  
+![](https://i.imgur.com/JWY0ORA.png)      
+
+	
