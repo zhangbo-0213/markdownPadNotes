@@ -1960,12 +1960,56 @@ ColorMask用于设置颜色通道的写掩码，语义：
 		}
 	}
 	FallBack "Diffuse"
-}
+	}
 
 实例效果：       
 ![](https://i.imgur.com/dQlUjDT.png)         
 ![](https://i.imgur.com/2pjCvqs.png)      
-这里值得注意的是，描边效果实际上在第二个Pass过后生成的是面片而非线条，这一点在模型表面顶点法线变化剧烈的地方可以看出来，例如CUBE的顶点处。
+这里值得注意的是，描边效果实际上在第二个Pass过后生成的是面片而非线条，这一点在模型表面顶点法线变化剧烈的地方可以看出来，例如CUBE的顶点处。 
+
+**渲染路径&复杂光照**       
+渲染路径(Rendering Path)决定光照如何应用到UnityShader中。为了获取场景中的光源数据，需要为每个Pass指定其渲染路径。5.0以后的版本中，Unity支持**前向渲染(Forward Renddering Path)**和 **延迟渲染(Deferred Rendering Path)**。系统默认情况下选择的是**前向渲染路径**，可以更改，同时若想使用多个渲染路径，可以在不同的摄像机中调节 **Rendering Path**选项。     
+通过在每个Pass中使用标签来指定Pass使用的渲染路径，即使用 **LightMode**标签实现。不同类型的渲染路径可能包含多种标签设置。  
+
+	Pass{
+		Tags{"LightMode"="ForwardBase"}
+	}
+前向渲染路径除了有**ForwardBase**，还有 **ForwardAdd**。Pass中的 **LightMode**支持的渲染路径设置选项：      
+![](https://i.imgur.com/xXrJjDW.png)   
+当我们为一个Pass设置了渲染路径的标签，就可以通过Unity提供的内置光照变量来访问这些属性。  
+
+**前向渲染路径**   
+每进行一次完整的前向渲染，都需要渲染该对象的渲染图元，并计算颜色和深度缓冲区的值。**对于每一个逐像素光源，都需要进行一次该过程。**也就是说，如果一个物体在多个逐像素光源的影响区域内，那么就需要执行对应数量的Pass，每个Pass对应一个逐像素的光源，然后在帧缓冲内将这些 **光照结果**混合起来得到最终的颜色值。      
+
+**Unity中的前向渲染**
+Unity中，前向渲染路径有3种处理光照的方式：**逐顶点处理，逐像素处理，球谐函数** 光源类型和渲染模式决定了使用哪一种处理方式。    
+光源类型指该光源是平行光还是其他类型的光源。    
+渲染模式是指该光源是否为**重要的(IMPORTANT)**，如果将一个光源设置为重要的，那么Unity将其作为逐像素光源来处理。     
+在前向渲染中，Unity根据场景中的光源对物体的影响程度对光源进行重要度排序。   
+一定数目光源按照 **逐像素**处理    
+最多 **4个**光源按照 **逐顶点**方式处理    
+剩下的光源按照 **球谐函数**方式处理      
+Unity使用的判定规则：      
+
+- 最亮的平行光总是按照逐像素处理     
+- 渲染模式设置为 **Not Important**的光源，按照逐顶点或球谐函数的方式处理
+- 渲染模式被设置成**Important**的光源，按逐像素处理    
+- 根据以上规则得到的逐像素光源数量小于**QualitySetting**中的逐像素光源数量，将有更多的光源以逐像素方式进行渲染       
+
+光照计算在Pass中，前向渲染有两种：**ForwardBase**和 **ForwardAdd**，使用如下：    
+![](https://i.imgur.com/gCTkHpW.png)       
+ 
+
+- 在对应的Pass中使用 #pragma multi-compile-fwdbase和 #pragma multi-compile-fwdadd编译命令才能正确的访问光照衰减等光照变量。   
+- Base Pass中渲染的平行光默认支持阴影，Additional Pass中渲染的光源默认情况没有阴影效果，需要使用 #pragma multi-compile-fwdadd-fullshadows代替 #pragma multi-compile-fwdadd编译指令。   
+- 环境光和自发光只需计算一次，因此放到BasePass中    
+- Additional Pass的渲染设置中，开启和设置设置混合模式，因为希望每个Additional Pass可以与上一次的光照结果在帧缓存中进行叠加。如果没有设置，那么就会将上一次的计算结果进行覆盖。通常设置的混合模式为**Blend One One**       
+- 针对前向渲染，一个Shader通常会定义一个Base Pass（Base Pass也可以定义多个，像之前的双面渲染）和一个Additional Pass。一个Base Pass仅执行一次，而Additional Pass会根据影响该物体的其他逐像素光源的数目被多次调用。  
+
+**内置的光照变量&函数**
+
+
+
 
 
 
