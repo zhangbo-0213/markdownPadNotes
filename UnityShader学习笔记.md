@@ -2034,7 +2034,154 @@ Unity中使用延迟渲染路径，需要提供两个Pass。
 - 深度缓冲和模板缓冲   
 
 延迟渲染路径中可以使用的内置变量   
-![](https://i.imgur.com/fkq4lFr.png)     
+![](https://i.imgur.com/fkq4lFr.png)       
+
+**Unity光源类型**     
+Unity支持4种光源类型：平行光、点光源、聚光灯和面光源。面光源只有在烘焙后才能起作用，不属于实时光源。Shader中常用的光源属性包括：光源的位置、方向、颜色、强度和衰减。   
+
+- **平行光**    
+平行光对照亮的范围没有限制，平行光的几何属性只有方向。平行光没有衰减的概念。      
+- **点光源**     
+点光源的照亮空间是有限的，由空间中的一个球体定义。点光源可以表示由一个点发出、向所有方向延伸的光。点光源具有位置、方向、颜色、强度和衰减的属性。     
+- **聚光灯**    
+聚光灯的照亮空间是有限的，由空间中的一个锥形区域定义。聚光灯同样具有位置、方向、颜色、强度和衰减的属性。聚光灯的衰减比点光源的衰减计算更为复杂，因为要判断是否在一个锥形区域内。    
+
+**前向渲染中处理不同的光源类型**     
+使用一个平行光和一个点光源共同照亮物体    
+实例代码：  
+
+	Shader "Custom/Chapter9_ForwardRendering" {
+	Properties{
+		_Color("Color",Color)=(1,1,1,1)
+		_SpecularColor("SpecularColor",Color)=(1,1,1,1)
+		_Gloss("Gloss",Range(8.0,256))=20
+	}
+	SubShader{
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+			CGPROGRAM
+				#pragma multi_compile_fwdbase
+				//#pragma multi_compile_fwdbase指令保证Shader中使用光照衰减变量可以被正确赋值
+				#pragma vertex vert
+				#pragma fragment frag 
+				
+				#include "Lighting.cginc"
+				
+				fixed4 _Color;
+				fixed4 _SpecularColor;
+				float   _Gloss;
+
+				struct a2v{
+					float4 vertex:POSITION;
+					float3 normal:NORMAL;
+				};
+				struct v2f{
+					float4 pos:SV_POSITION;
+					float3 worldPos:TEXCOORD0;
+					float3 worldNormal:TEXCOORD1;
+				};
+
+				v2f vert(a2v v){
+					v2f o;
+					o.pos=UnityObjectToClipPos(v.vertex);
+					o.worldPos=mul(unity_ObjectToWorld,v.vertex).xyz;
+					o.worldNormal=UnityObjectToWorldNormal(v.normal);
+
+					return o;
+				}
+
+				fixed4 frag(v2f i):SV_Target{
+					fixed3 worldLightDir=normalize(UnityWorldSpaceLightDir(i.worldPos));
+					fixed3 worldNormal=normalize(i.worldNormal);
+					fixed3 worldViewDir=normalize(UnityWorldSpaceViewDir(i.worldPos));
+
+					fixed3 ambient=UNITY_LIGHTMODEL_AMBIENT.xyz;
+					fixed3 diffuse=_LightColor0.rgb*_Color.rgb*max(0,dot(worldNormal,worldLightDir));
+					fixed3 halfDir=normalize(worldViewDir+worldLightDir);
+					fixed3 specularColor=_LightColor0.rgb*_SpecularColor.rgb*pow(saturate(dot(worldNormal,halfDir)),_Gloss);
+					
+					fixed atten=1.0;
+					//Unity选择最亮的平行光在BasePass中处理，平行光的衰减值设为1，认为没有衰减
+					return fixed4(ambient+(diffuse+specularColor)*atten,1.0);
+				}
+			ENDCG
+		}
+
+		Pass{
+			Tags{"LightMode"="ForwardAdd"}
+			Blend One One
+			CGPROGRAM
+				#pragma multi_compile_fwdadd
+				//#pragma multi_compile_fwdadd指令保证Shader中访问正确的光照变量
+				#pragma vertex vert
+				#pragma fragment frag 
+				
+				#include "Lighting.cginc"
+				//需要引入改文件，才能正确的访问到_LightMatrix0光照矩阵，对坐标进行转换
+				//以便对光照衰减纹理进行采样
+				#include "AutoLight.cginc"
+				
+				fixed4 _Color;
+				fixed4 _SpecularColor;
+				float   _Gloss;
+
+				struct a2v{
+					float4 vertex:POSITION;
+					float3 normal:NORMAL;
+				};
+				struct v2f{
+					float4 pos:SV_POSITION;
+					float3 worldPos:TEXCOORD0;
+					float3 worldNormal:TEXCOORD1;
+				};
+
+				v2f vert(a2v v){
+					v2f o;
+					o.pos=UnityObjectToClipPos(v.vertex);
+					o.worldPos=mul(unity_ObjectToWorld,v.vertex).xyz;
+					o.worldNormal=UnityObjectToWorldNormal(v.normal);
+
+					return o;
+				}
+
+				fixed4 frag(v2f i):SV_Target{
+					//Additional中去掉BasePass中的环境光、自发光、逐顶点光照和SH光照部分
+					//AddPass中处理的光源可能是非最亮平行光、点光源、聚光灯，因此计算光源的
+					//位置、方向、颜色、强度和衰减时，需要根据光源类型分别进行计算
+					#ifdef USING_DIRECTIONAL_LIGHT
+						fixed3 worldLightDir=normalize(_WorldSpaceLightPos0.xyz);
+					#else
+						fixed3 worldLightDir=normalize(_WorldSpaceLightPos0.xyz-i.worldPos.xyz);
+					#endif
+					//上述过程先判断处理的光源是否为平行光，如果是平行光，渲染引擎会定义USING_DIRECTIONAL_LIGHT
+					//若没有定义则说明不是平行光，光源位置通过运算得到
+					fixed3 worldNormal=normalize(i.worldNormal);
+					fixed3 worldViewDir=normalize(UnityWorldSpaceViewDir(i.worldPos));
+					
+					fixed3 diffuse=_LightColor0.rgb*_Color.rgb*max(0,dot(worldNormal,worldLightDir));
+					fixed3 halfDir=normalize(worldViewDir+worldLightDir);
+					fixed3 specularColor=_LightColor0.rgb*_SpecularColor.rgb*pow(saturate(dot(worldNormal,halfDir)),_Gloss);
+					
+					//处理衰减过程
+					//针对其他光源类型，Unity使用一张纹理作为查找表，来得到片元着色器中的光照衰减值
+					//先得到光源空间下的坐标，使用该坐标进行采样得到衰减值
+					#ifdef USING_DIRECTIONAL_LIGHT
+						fixed  atten=1.0;
+					#else 
+						float3 lightCoord=mul(_LightMatrix0,float4(i.worldPos,1)).xyz;
+						fixed atten = tex2D(_LightTexture0, dot(lightCoord, lightCoord).rr).UNITY_ATTEN_CHANNEL;
+					#endif		
+					return fixed4((diffuse+specularColor)*atten,1.0);
+				}
+			ENDCG
+		}
+	}
+	FallBack "Specular"
+	}  
+实例效果：    
+![](https://i.imgur.com/8SycLR1.png)     
+左侧没有AddPass的BlinnPong光照效果，右侧为增加上述AddPass的BlinnPhong光照效果，可以看出右侧可以接收场景中的点光源的影响。
+
 
 
 
