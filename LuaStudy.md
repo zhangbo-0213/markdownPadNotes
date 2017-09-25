@@ -249,4 +249,88 @@ Lua是动态类型语言，变量不要类型定义，只需要为类型赋值�
 		print(c)            --30
 		print(d)		    --nil  
 - 语句块中全局变量会覆盖块外的同名变量，局部变量在语句块执行完后被销毁，变量的访问遵循就近原则
-- 推荐尽可能使用局部变量，访问更快，更节约资源
+- 推荐尽可能使用局部变量，访问更快，更节约资源  
+- 多变量赋值与交换赋值     
+
+		a1,a2,a3=13,25,"hello"  
+		print(a1,a2,a3)   --输出25,13,"hello" nil
+
+		a1,a2=a2,a1
+		print(a1,a2)   --输出25,13
+		
+		function test()
+		return 10,20
+		end
+
+		b1,b2=test()
+		print(b1,b2)    --输出10,20   
+
+**循环**    
+
+	--[[
+	1.while循环
+	2.for循环
+	3.repeat循环   （do while）
+
+
+	1.while循环
+
+	while(condition) do
+	statements
+	end
+
+	2.for循环	
+	2.1 数值for循环
+
+	for var=start,end,step do
+		statements
+	end
+	2.2 泛型for循环
+
+
+	3.repeat循环
+
+	repeat
+		statement
+	until(condition)
+	--]]
+
+
+	a=1	
+	while (a<=20) do
+	if (a%2==1) then
+		print(a)
+	end
+	a=a+1
+	end
+
+	for var=1,10,2 do
+	print(var)
+	end
+
+	for var=20,10,-1 do
+	print(var)
+	var=var-1
+	end
+
+	tab1={key1="value1",key2="value2"}
+	for k,v in pairs(tab1) do
+	print(k.."&"..v)
+	end
+
+	tab2={"一","二","三","四"}
+	for k,v in pairs(tab2) do
+	print(k,v)
+	end
+
+	repeat
+	print(a)
+	a=a-2
+	until(a<=0)  
+
+	--循环嵌套
+	for var=1,10,1 do
+		for var1=1,var,1 do
+			print(var)
+		end
+	end
