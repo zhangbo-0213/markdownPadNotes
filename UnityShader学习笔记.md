@@ -2194,7 +2194,18 @@ Unity在内部使用一张名为_LightTexture0的纹理来计算光源衰减，�
 
 **Unity中的阴影**     
 Unity中可以使一个物体向其他物体投射阴影，以及让一个物体接收其他物体的阴影，从而使场景看起来更加真实。Unity的实时渲染中，使用一种**Shadow Map**技术，这种技术将摄像机放在光源位置，场景中的阴影区域即为摄像机看不到的区域。阴影映射纹理本质上是一张深度图，记录从光源位置出发，能看到的场景中距离距离它最近的表面位置的深度信息。Unity使用一个额外的Pass专门用于更新光源的阴影映射纹理，该Pass为 **LightMode**标签设置为 **ShadowCaster**的Pass。当使用屏幕空间阴影映射时，Unity先调用  **LightMode**为 **ShadowCaster**的Pass来得到可投射阴影的光源的阴影映射纹理以及摄像机的深度纹理。根据光源的阴影映射纹理和深度纹理得到屏幕空间的阴影图，一个物体若想接收其他物体的阴影，则需要在Shader中对阴影进行采样。阴影图是屏幕空间下的，先对表面坐标从模型空间变换到屏幕空间，再对阴影图进行采样。完整的过程为：    
-![](https://i.imgur.com/RjORQ02.png)   
+![](https://i.imgur.com/RjORQ02.png)     
+
+**不透明物体的阴影**     
+Unity中通过设置物体**MeshRenderer**中的 **Cast Shadows**和  **Receive Shadows**可以使物体投射或接收阴影。   
+
+- **让物体投射阴影**      
+设置Mesh Renderer的Cast Shadows为On，Unity会将该物体加入到光源的阴影映射纹理的计算中，使其他物体在对阴影映射纹理采样时得到该物体的信息。例如该场景中：      
+![](https://i.imgur.com/j5FLhcG.png)       
+设置Cube的Cast Shadows为On，勾选Plane的Receive Shadows      
+![](https://i.imgur.com/23rAAUD.png)      
+Cube所应用的材质挂载的Shader为上述"Custom/Chapter9_ForwardRendering"，该Shader中并没有一个专门的Pass为 “LightMode”="ShadowCaster"来实现阴影的处理，而能投射的阴影的原因在于**FallBack:"Specular"**语义，Specular本身也没有这样的Pass，而Specular的**Fallback:"VertexLit"**包含对应的Pass。在开启Cast Shadows后Unity会在Shader和回调的Shader中一直寻找对应Pass并处理阴影映射纹理计算。  
+物体的Mesh Renderer中的Cast Shadows还可以设置为 **Two Sided**,允许对物体所有的面都加入到阴影映射纹理的计算中。
 
 
 ----------
