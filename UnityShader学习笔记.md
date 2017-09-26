@@ -2204,7 +2204,7 @@ Unity中通过设置物体**MeshRenderer**中的 **Cast Shadows**和  **Receive 
 ![](https://i.imgur.com/j5FLhcG.png)       
 设置Cube的Cast Shadows为On，勾选Plane的Receive Shadows      
 ![](https://i.imgur.com/23rAAUD.png)      
-Cube所应用的材质挂载的Shader为上述"Custom/Chapter9_ForwardRendering"，该Shader中并没有一个专门的Pass为 “LightMode”="ShadowCaster"来实现阴影的处理，而能投射的阴影的原因在于**FallBack:"Specular"**语义，Specular本身也没有这样的Pass，而Specular的**Fallback:"VertexLit"**包含对应的Pass。在开启Cast Shadows后Unity会在Shader和回调的Shader中一直寻找对应Pass并处理阴影映射纹理计算。  
+Cube所应用的材质挂载的Shader为上述"Custom/Chapter9_ForwardRendering"，该Shader中并没有一个专门的Pass为 “LightMode”="ShadowCaster"来实现阴影的处理，而能投射的阴影的原因在于 **FallBack:"Specular"**语义，Specular本身也没有这样的Pass，而Specular的 **Fallback:"VertexLit"**包含对应的Pass。在开启Cast Shadows后Unity会在Shader和回调的Shader中一直寻找对应Pass并处理阴影映射纹理计算。  
 物体的Mesh Renderer中的Cast Shadows还可以设置为 **Two Sided**,允许对物体所有的面都加入到阴影映射纹理的计算中。
 
 
