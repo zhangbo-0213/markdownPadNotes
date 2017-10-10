@@ -372,7 +372,78 @@ if语句
 	else
 		print("a=10")
 	end
-	--输出a=10
+	--输出a=10   
 
+**函数修饰符**   
+函数的修饰符 local 和变量一样,表示局部函数
 
- 
+	[local] functionName(arg1,arg2,arg3...)
+	functionBody
+	[retrun value1,value2,value3...] 
+	
+	local function max(num1,num2)
+		if num1>num2 then
+			return num1
+		else
+			return num2
+		end
+	end
+
+函数可以作为数据赋值  作为参数传递  
+
+	temp=max
+	print(temp(2,5))
+
+	myprint=function (param)
+		print("这是我的打印函数："..param)
+	end
+
+	myprint(100)
+
+	function add(num1,num2,printFunc)
+		printFunc(num1+num2)
+		end
+
+	add(15,20,myprint)  
+  
+**可变参数**    
+	
+	--可变参数
+	print(20,30,40)
+	--可变参数函数定义
+
+	function test(...)      --通过...符号表明函数接受的是可变参数
+		local arg={...}     --通过local arg={...}访问可变参数的table，不包含元素数量
+		print(arg)          --通过arg内置参数访问得到包含了可变参数的table，除了包含每个元素的值，还包括元素的个数值，
+		print(arg[1])       --通过索引来访问table中的数据
+	end
+
+	test(1,2,3,4)        --输出table: 003E9768  
+
+	function average(...)
+		local arg={...}
+		res=0
+		for k,v in pairs(arg) do
+		res=res+v
+		end
+		print("average:"..(res/#arg))   --#table/#字符串  取得其长度
+	end  
+	average(1,2,3,4)
+	
+ 运算符  
+	
+	--关系运算符 ==  ~=不等于  > < >= <=
+	if(a~=b)  then
+		print("a~=b")
+	else
+		print("a==b")
+	end
+
+	--逻辑运算  and   or not
+	if(1 and 2)  then
+		print("条件为真")
+	end
+
+	print(10>3 and 10<3)
+	print(10>3 or 10<3)
+	print(not (10>3))
