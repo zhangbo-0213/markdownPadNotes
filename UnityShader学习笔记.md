@@ -2205,13 +2205,271 @@ Unity中通过设置物体**MeshRenderer**中的 **Cast Shadows**和  **Receive 
 设置Cube的Cast Shadows为On，勾选Plane的Receive Shadows      
 ![](https://i.imgur.com/23rAAUD.png)      
 Cube所应用的材质挂载的Shader为上述"Custom/Chapter9_ForwardRendering"，该Shader中并没有一个专门的Pass为 “LightMode”="ShadowCaster"来实现阴影的处理，而能投射的阴影的原因在于 **FallBack:"Specular"**语义，Specular本身也没有这样的Pass，而Specular的 **Fallback:"VertexLit"**包含对应的Pass。在开启Cast Shadows后Unity会在Shader和回调的Shader中一直寻找对应Pass并处理阴影映射纹理计算。  
-物体的Mesh Renderer中的Cast Shadows还可以设置为 **Two Sided**,允许对物体所有的面都加入到阴影映射纹理的计算中。
+物体的Mesh Renderer中的Cast Shadows还可以设置为 **Two Sided**,允许对物体所有的面都加入到阴影映射纹理的计算中。   
+
+- **让物体接收阴影**    
+物体接受阴影，需要对阴影纹理进行采样和相应的计算，需要用到     
+		
+		#include  "AutoLight.cginc"
+		SHADOW_COORDS()
+		TRTANSFER_SHADOW
+		SHADOW_ATTENUATION()    
+对应的包含文件和相应的宏指令，完整代码：   
+
+		Shader "Custom/Chapter9_Shadow" {
+		Properties{
+		_Color("Color",Color)=(1,1,1,1)
+		_SpecularColor("Specular",Color)=(1,1,1,1)
+		_Gloss("Gloss",Range(8.0,256))=20
+		}
+
+		SubShader{
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+
+			CGPROGRAM
+			#pragma multi_compile_fwdbase
+			#pragma vertex vert
+			#pragma fragment frag
+
+			#include "Lighting.cginc"
+			#include "AutoLight.cginc" 
+			//计算阴影所用的宏包含在AutoLight.cginc文件中
+
+			fixed4 _Color;
+			fixed4 _SpecularColor;
+			float   _Gloss;
+
+			struct a2v{
+				float4  vertex:POSITION;
+				float3  normal:NORMAL; 
+			};
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				float3 worldPos:TEXCOORD0;
+				float3 worldNormal:TEXCOORD1;
+				SHADOW_COORDS(2) 
+				//该宏的作用是声明一个用于对阴影纹理采样的坐标
+				//这个宏的参数是下一个可用的插值寄存器的索引值，上述中为2
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.worldPos=mul(unity_ObjectToWorld,v.vertex).xyz;
+				o.worldNormal=UnityObjectToWorldNormal(v.normal);
+
+				TRANSFER_SHADOW(o);
+				//该宏用于计算上一步声明的阴影纹理采样坐标
+
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				float3 worldLightDir=normalize(UnityWorldSpaceLightDir(i.worldPos));
+				float3 worldNormal=normalize(i.worldNormal);
+				float3 worldViewDir=normalize(UnityWorldSpaceViewDir(i.worldPos));
+
+				fixed3 ambient=UNITY_LIGHTMODEL_AMBIENT.xyz;
+				fixed3 diffuse=_LightColor0.rgb*_Color.rgb*max(0,dot(worldLightDir,worldNormal));
+				fixed3 halfDir=normalize(worldLightDir+worldViewDir);
+				fixed3 specularColor=_LightColor0.rgb*_SpecularColor.rgb*pow(saturate(dot(halfDir,worldNormal)),_Gloss);
+
+				fixed shadow=SHADOW_ATTENUATION(i);
+				//片元着色器中计算阴影值
+
+				fixed atten=1.0;
+				return fixed4(ambient+(diffuse+specularColor)*atten*shadow,1.0);
+			}
+			ENDCG
+		}
+
+		Pass{
+			Tags{"LightMode"="ForwardAdd"}
+			Blend One One
+			CGPROGRAM
+			#pragma multi_compile_fwdadd
+			#pragma vertex vert
+			#pragma fragment frag
+
+			#include "Lighting.cginc"
+			#include "AutoLight.cginc"
+
+			fixed4 _Color;
+			fixed4 _SpecularColor;
+			float   _Gloss;
+
+			struct a2v{
+				float4  vertex:POSITION;
+				float3  normal:NORMAL; 
+			};
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				float3 worldPos:TEXCOORD0;
+				float3 worldNormal:TEXCOORD1;
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.worldPos=mul(unity_ObjectToWorld,v.vertex).xyz;
+				o.worldNormal=UnityObjectToWorldNormal(v.normal);
+
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				#ifdef USING_DIRECTIONAL_LIGHT
+					fixed3 worldLightDir=normalize(_WorldSpaceLightPos0.xyz);
+					fixed atten=1.0;
+				#else
+					fixed3 worldLightDir=normalize(_WorldSpaceLightPos0.xyz-i.worldPos.xyz);
+					float3 lightCoord=mul(unity_WorldToLight,float4(i.worldPos,1.0)).xyz;
+					fixed atten=tex2D(_LightTexture0,dot(lightCoord,lightCoord).rr).UNITY_ATTEN_CHANNEL;
+				#endif
+				float3 worldNormal=normalize(i.worldNormal);
+				float3 worldViewDir=normalize(UnityWorldSpaceViewDir(i.worldPos));
+
+				fixed3 diffuse=_LightColor0.rgb*_Color.rgb*max(0,dot(worldLightDir,worldNormal));
+				fixed3 halfDir=normalize(worldLightDir+worldViewDir);
+				fixed3 specularColor=_LightColor0.rgb*_SpecularColor.rgb*pow(saturate(dot(halfDir,worldNormal)),_Gloss);
+
+				
+				return fixed4((diffuse+specularColor)*atten,1.0);
+			}
+			ENDCG
+		}
+		}
+		FallBack "Specular"
+		}  
+第二个Pass是为了计算场景中其他光源对物体的影响。阴影的计算主要在第一个Pass中，也就是"LightMode"="ForwardBase" 。
+在前向渲染中，**SHADOW_COORDS** 声明一个阴影纹理坐标， **TRANSFER_SHADOW** 根据平台不同使用屏幕空间阴影纹理映射技术，将顶点坐标从模型空间变换到光源空间后存储到之前声明的阴影纹理坐标中， **SHADOW_ATTENUATION** 负责使用阴影映射纹理坐标对相关纹理进行采样，得到阴影信息。   
+**这里需要注意的是** 这些宏会使用上下文变量来进行相关计算，为了确保宏正确工作，要保证自定义的变量名与宏使用的变量名相匹配，a2f结构体中顶点坐标变量名必须是 **vertex** ,顶点着色器的输入结构体a2v 必须命名为 **v** v2f中的顶点位置变量名必须是 **pos**。   
+实例效果：  
+![](https://i.imgur.com/bY2Nt1g.png)      
+![](https://i.imgur.com/rM0DCcZ.png)   
+第一个没有添加阴影处理效果，后一个添加阴影处理效果，可以看到后一个接受到了侧面的阴影       
+Unity中使用 **UNITY_LIGHT_ATTENUATION**同时计算阴影和衰减    
+
+		UNITY_LIGHT_ATTENUATION(atten,i,i.worldPos);
+		//通过UNITY_LIGHT_ATTENUATION计算衰减和阴影
+		return fixed4(ambient+(diffuse+specularColor)*atten,1.0);  
+得到的效果和之前相同， **UNITY_LIGHT_ATTENUATION**接收三个参数，将光照衰减和阴影值相乘后的结果存储到第一个参数中，atten不需要在代码中提前声明， **UNITY_LIGHT_ATTENUATION**宏会声明这个变量，第二个参数是结构体v2f，该参数传递阴影坐标，计算阴影值，第三个参数是世界空间坐标，用于计算光源下的坐标。    
+Addtional Pass中添加阴影，可以使用      
+
+		#pragma multi_compile_fwdadd_fullshadows   
+编译命令代替     
+
+		#pragma multi_compile_fwdadd  
+Unity会为额外的逐像素光源计算阴影。  
+
+**透明度物体的阴影**     
+Unity中物体想要投射阴影，必须在其Shader中提供**ShadowCaster**的Pass。对于大部分不透明的物体来说， **FallBack**设置为 **VertexLit**就可以得到正确的阴影。对于透明物体来说，其透明效果的实现使用透明度测试和透明度混合得到，需要小心设置这些物体的FallBack。  
+
+- **透明度测试的处理**    
+透明度测试的Shader使用之前的Shader，只过不过需要添加    
+
+		#include "Lighting.cginc"
+		#include "AutoLight.cginc"  
+		SHADOW_COORDS()
+		TRANSFER_SHADOW;
+		UNITY_LIGHT_ATTENUATION();   
+对应的包含文件和阴影相关的宏指令，如果FallBack使用 **"VertexLit"**,得到的阴影效果：     
+![](https://i.imgur.com/FBpVEaV.png)       
+可以看到，透明镂空部分的阴影仍然完整，看起来CUBE和普通CUBE一样。这是由于 **VertexLit**中提供的 **ShadowCaster**Pass中并没有处理透明度测试的计算。    
+Unity中提供了对应的Pass，具有透明度测试功能的 **ShadowCaster** ,若将FallBack改为 **"Transparent/Cutout/VertexLit"** ，得到效果   
+![](https://i.imgur.com/4RBw8Xi.png)    
+可以看到，这时镂空部分并没有投射出阴影，**需要注意的是**  这个Pass中使用到了 **_Cutoff** 的属性，因此在自定义的Pass中需要提供对应名称的属性。  
+实例完整代码：   
+
+		Shader "Custom/Chapter9_AlphaTestWithShadow" {
+		Properties{
+		_Color("Color",Color)=(1,1,1,1)
+		_MainTex("MainTex",2D)="white"{}
+		_Cutoff("Alpha Cutoff",Range(0,1))=0.5  //在材质面板显示和调节透明度测试的控制阈值
+		}
+		SubShader{
+		Tags{"Queue"="AlphaTest" "IgnoreProjector"="True" "RenderType"="TransparentCutout"}
+		//通常，使用透明度测试的Shader都应该在SubShader中设置这三个标签
+		//"RenderType"="TransparentCutout"指明该shader为使用了透明度测试的shader
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "Lighting.cginc"
+
+			#include "Autolight.cginc"
+
+			fixed4 _Color;
+			sampler2D _MainTex;
+			float4 _MainTex_ST;
+			fixed _Cutoff;
+
+			struct a2v{
+				float4 vertex:POSITION;
+				float3 normal:NORMAL;
+				float4 texcoord:TEXCOORD0;
+			};
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				float3 worldNormal:TEXCOORD0;
+				float3 worldPos:TEXCOORD1;
+				float2 uv:TEXCOORD2;
+
+				SHADOW_COORDS(3)
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.worldNormal=UnityObjectToWorldNormal(v.normal);
+				o.worldPos=mul(unity_ObjectToWorld,v.vertex).xyz;
+				o.uv=TRANSFORM_TEX(v.texcoord,_MainTex);
+
+				TRANSFER_SHADOW(o);
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				fixed3 worldNormal=normalize(i.worldNormal);
+				fixed3 worldLightDir=normalize(UnityWorldSpaceLightDir(i.worldPos));
+
+				fixed4 texColor=tex2D(_MainTex,i.uv);
+
+				clip(texColor.a-_Cutoff);
+				//clip函数做透明度的比较后进行裁剪剔除操作
+				fixed3 albedo=texColor.rgb*_Color;
+				fixed3 ambient=UNITY_LIGHTMODEL_AMBIENT.xyz*albedo;
+				fixed3 diffuse=_LightColor0.rgb*albedo*max(0,dot(worldNormal,worldLightDir));
+
+				UNITY_LIGHT_ATTENUATION(atten,i,i.worldPos);
+				return fixed4(ambient+diffuse*atten,1.0);
+
+			}
+			ENDCG
+			}
+		}
+		//FallBack "VertexLit"
+		FallBack "Transparent/Cutout/VertexLit"
+		}
+				 
+
+
+- **透明度混合的处理**    
+由于透明度混合需要关闭深度写入，对阴影纹理会产生影响，半透明物体不会参与深度图和阴影映射纹理的计算，他们不会向其他物体投射阴影，也不会接受来自其他物体的阴影。若要强制产生阴影，可以将其Fallback设置为 **VertexLit**并开启阴影投射和接收阴影选项。
+
 
 
 ----------
 ### 相关参考 ###
 《UnityShader入门精要》    冯乐乐     
 ### 相关学习链接 ###
+关于ZTest和ZWrite :  
+[http://www.cnblogs.com/ljx12138/p/5341381.html](http://www.cnblogs.com/ljx12138/p/5341381.html)  
 Unity着色器训练营（1）：   
 入门篇 [http://forum.china.unity3d.com/thread-27522-1-1.html  ](http://forum.china.unity3d.com/thread-27522-1-1.html   "Unity着色器训练营（1）入门篇")     
 小小的顶点变换能实现大大的效果  
