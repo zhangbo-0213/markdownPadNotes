@@ -2467,6 +2467,303 @@ Unity中提供了对应的Pass，具有透明度测试功能的 **ShadowCaster**
 **立方体纹理（CubeMap）**是 **环境映射(Enviroment Mapping)**的一种实现方式。立方体纹理包含6张图像，每个面表示沿着世界空间下的轴向（上、下、左、右、前、后） 观察所得的图像。对立方体纹理的采样需要提供三维纹理坐标，表示在世界空间下的一个3D方向，方向矢量从立方体中心出发，向外部延伸就会和立方体的6个纹理之一发生相交，采样结果由交点计算而来。    
 立方体纹理在实时渲染中最常见的应用是天空盒子以及环境映射。
 
+天空盒子的创建通过Unity自带的Skybox/6 Sided材质创建，需要对应6张纹理，即        
+![](https://i.imgur.com/JVgrjwG.png)
+
+立方体纹理用于环境映射，模拟类似金属反射周围环境的效果，这个过程首先需要获取到指定位置的立方体纹理，再应用到反射和折射计算。  
+**Step1 获取指定位置的立方体纹理**     
+主要通过脚本实现，添加编辑器工具，利用Unity提供的**Camera.RenderToCubemap**方法生成立方体纹理，完整代码：  
+
+	public class RenderCubeMapWizard : ScriptableWizard
+	{
+
+    public Transform renderFromPosition;
+    public Cubemap cubemap;
+
+    void OnWizardUpdate()
+    {
+        helpString = "Select transform to render from and cubemap to render into";
+        isValid=(renderFromPosition!=null)&&(cubemap!=null);
+    }
+
+    void OnWizardCreate()
+    {
+        GameObject go=new GameObject("CubemapCamera");
+        go.AddComponent<Camera>();
+        go.transform.position = renderFromPosition.position;
+        go.GetComponent<Camera>().RenderToCubemap(cubemap);
+
+        DestroyImmediate(go);
+    }
+
+    [MenuItem("GameObject/Render into Cubemap")]
+    static void RenderCubemap()
+    {
+        ScriptableWizard.DisplayWizard<RenderCubeMapWizard>("Render cubemap", "Render");
+    }
+    }	
+需要添加 “using UnityEditor”命名空间，点击“Render”脚本执行后会将对应点的立方体纹理渲染到指定的立方体纹理中。 
+
+**Step2 反射计算**      
+反射效果通过入射光线方向和表面法线得到反射方向，再利用反射方向对立方体纹理进行采样，得到反射效果。入射光线为观察方向的反方向，主要使用CG函数中的reflect函数。完整代码：   
+	
+	Shader "Custom/Chapter10_Reflection" {
+	Properties{
+		_Color("Color",Color)=(1,1,1,1)
+		_ReflectionColor("ReflectionColor",Color)=(1,1,1,1)
+		_ReflectionAmount("ReflectionAmount",Range(0,1))=1
+		_Cubemap("Cubemap",Cube)="_Skybox"{}
+	}
+	SubShader{
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+
+			CGPROGRAM
+				#pragma vertex vert
+				#pragma fragment frag
+				#pragma multi_compile_fwdbase
+
+				#include "Lighting.cginc"
+				#include "AutoLight.cginc"
+
+				fixed4 _Color;
+				fixed4 _ReflectionColor;
+				float   _ReflectionAmount;
+				samplerCUBE  _Cubemap;
+
+				struct a2v{
+					float4 vertex:POSITION;
+					float3 normal:NORMAL;
+				};
+
+				struct v2f{
+					float4 pos:SV_POSITION;
+					float3 worldPos:TEXCOORD0;
+					float3 worldNormal:TEXCOORD1;
+					float3 worldViewDir:TEXCOORD2;
+					float3 worldRefl:TEXCOORD3;
+					SHADOW_COORDS(4)
+				};
+
+				v2f vert(a2v v){
+					v2f o;
+					o.pos=UnityObjectToClipPos(v.vertex);
+					o.worldPos=mul(_Object2World,v.vertex).xyz;
+					o.worldNormal=UnityObjectToWorldNormal(v.normal);
+					o.worldViewDir=UnityWorldSpaceViewDir(o.worldPos);
+
+					//将观察方向的反方向作为入射方向去计算反射方向
+					o.worldRefl=reflect(-o.worldViewDir,o.worldNormal);
+
+					TRANSFER_SHADOW	(o);
+					return o;
+				}
+				fixed4 frag(v2f i):SV_Target{
+					fixed3 worldNormal=normalize(i.worldNormal);
+					fixed3 worldViewDir=normalize(i.worldViewDir);
+					fixed3 worldLightDir=normalize(UnityWorldSpaceLightDir(i.worldPos));
+
+					fixed3 ambient=UNITY_LIGHTMODEL_AMBIENT.xyz;
+					fixed3 diffuse=_LightColor0.rgb*_Color.rgb*max(dot(worldNormal,worldLightDir),0);
+					fixed3 reflection=texCUBE(_Cubemap,i.worldRefl).rgb*_ReflectionColor.rgb;
+					
+					UNITY_LIGHT_ATTENUATION(atten,i,i.worldPos);
+
+					fixed3 color=ambient+lerp(diffuse,reflection,_ReflectionAmount)*atten;
+
+					return fixed4(color,1.0);
+				}
+			ENDCG
+		}
+	}
+	FallBack "Diffuse"
+	} 
+
+代码效果：  
+	![](https://i.imgur.com/Xu5X3Ey.png)     
+
+**Step3 折射计算**
+折射计算和反射计算类似，先计算出折射方向，再向生成立方体纹理进行采样，主要用到CG函数中的refract函数，传入三个参数，入射方向，法线方向，折射率比值（入射到反射方向）**值得注意的是** 传入的方向参数必须是归一化之后的方向。完整代码为：  
+	
+	Shader "Custom/Chapter10_Refraction" {
+	Properties{
+		_Color("Color",Color)=(1,1,1,1)
+		_RefractionColor("Reflection Color",Color)=(1,1,1,1)
+		_RefractionAmount("Reflection Amount",Range(0,1))=1
+		_RefractionRatio("Refraction Ratio",Range(0.1,1))=0.5
+		_Cubemap("Cubemap",Cube)="_Skybox"{}
+	}
+	SubShader{
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+
+			CGPROGRAM
+				#pragma vertex vert
+				#pragma fragment frag
+				#pragma multi_compile_fwdbase
+
+				#include "Lighting.cginc"
+				#include "AutoLight.cginc"
+
+				fixed4 _Color;
+				fixed4 _RefractionColor;
+				float   _RefractionAmount;
+				float   _RefractionRatio;
+				samplerCUBE  _Cubemap;
+
+				struct a2v{
+					float4 vertex:POSITION;
+					float3 normal:NORMAL;
+				};
+
+				struct v2f{
+					float4 pos:SV_POSITION;
+					float3 worldPos:TEXCOORD0;
+					float3 worldNormal:TEXCOORD1;
+					float3 worldViewDir:TEXCOORD2;
+					float3 worldRefr:TEXCOORD3;
+					SHADOW_COORDS(4)
+				};
+
+				v2f vert(a2v v){
+					v2f o;
+					o.pos=UnityObjectToClipPos(v.vertex);
+					o.worldPos=mul(unity_ObjectToWorld,v.vertex).xyz;
+					o.worldNormal=UnityObjectToWorldNormal(v.normal);
+					o.worldViewDir=UnityWorldSpaceViewDir(o.worldPos);
+
+					//将观察方向的反方向作为入射方向去计算折射方向
+					o.worldRefr=refract(-normalize(o.worldViewDir),normalize(o.worldNormal),_RefractionRatio);
+
+					TRANSFER_SHADOW	(o);
+					return o;
+				}
+				fixed4 frag(v2f i):SV_Target{
+					fixed3 worldNormal=normalize(i.worldNormal);
+					fixed3 worldViewDir=normalize(i.worldViewDir);
+					fixed3 worldLightDir=normalize(UnityWorldSpaceLightDir(i.worldPos));
+
+					fixed3 ambient=UNITY_LIGHTMODEL_AMBIENT.xyz;
+					fixed3 diffuse=_LightColor0.rgb*_Color.rgb*max(dot(worldNormal,worldLightDir),0);
+					fixed3 refraction=texCUBE(_Cubemap,i.worldRefr).rgb*_RefractionColor.rgb;
+					
+					UNITY_LIGHT_ATTENUATION(atten,i,i.worldPos);
+
+					fixed3 color=ambient+lerp(diffuse,refraction,_RefractionAmount)*atten;
+
+					return fixed4(color,1.0);
+				}
+			ENDCG
+		}
+	}
+	FallBack "Diffuse"
+	}   
+实例效果：   
+![](https://i.imgur.com/upqTXat.png)      
+
+**菲涅尔反射**    
+菲涅尔反射描述一种光学现象，当光线照射到物体表面时，一部分发生反射，一部分发生折射，一部分进入物体内部发生反射或折射。实时渲染中，经常使用**菲涅尔反射**，通过视角方向控制反射程度。  
+菲涅尔反射通过菲涅尔等式计算，真实的菲尼尔反射非常复杂，实时渲染中使用近似公式计算，两个用的比较多的近似公式：  
+
+- **Schlick菲涅尔近似等式**        
+![](https://i.imgur.com/dcdSACr.png)    
+F为反射系数，控制菲涅尔反射强度，v为视角方向，n为法线方向   
+- **Empricial菲涅尔近似等式**     
+![](https://i.imgur.com/JS93z0E.png)      
+bias、scale和power是控制项     
+
+许多车漆、水面等材质的渲染经常使用菲涅尔反射模拟更加真实的反射效果。  
+使用Schlick菲涅尔近似等式模拟，完整代码：
+
+	Shader "Custom/Chapter10_Fresnel" {
+	Properties{
+		_Color("Color",Color)=(1,1,1,1)
+		_FresnelFactor("FresnelFactor",Range(0,1))=0.5
+		_FreractionRatio("FreractionRatio",Range(0.1,1))=0.5
+		_Cubemap("Cubemap",Cube)="_Skybox"{}
+	}
+	SubShader{
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#pragma multi_compile_fwdbase
+
+			#include "Lighting.cginc"
+			#include "AutoLight.cginc"
+
+			fixed4 _Color;
+			float   _FresnelFactor;
+			float   _FreractionRatio;
+			samplerCUBE _Cubemap;
+
+			struct a2v{
+				float4 vertex:POSITION;
+				float3 normal:NORMAL;
+			};
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				float3 worldPos	:TEXCOORD0;
+				float3 worldNormal:TEXCOORD1;
+				float3 worldViewDir:TEXCOORD2;
+				float3 worldRefl:TEXCOORD3;
+				float3 worldRefr:TEXCOORD4;
+				SHADOW_COORDS(5)
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.worldPos=mul(unity_ObjectToWorld,v.vertex).xyz;
+				o.worldNormal=UnityObjectToWorldNormal(v.normal);
+				o.worldViewDir=UnityWorldSpaceViewDir(o.worldPos);
+				o.worldRefl=reflect(-o.worldViewDir,o.worldNormal);
+				o.worldRefr=refract(-normalize(o.worldViewDir),normalize(o.worldNormal),_FreractionRatio);
+
+				TRANSFER_SHADOW(o);
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				fixed3 worldNormal=normalize(i.worldNormal);
+				fixed3 worldViewDir=normalize(i.worldViewDir);
+				fixed3 worldLightDir=normalize(UnityWorldSpaceLightDir(i.worldPos));
+
+				fixed3 ambient=UNITY_LIGHTMODEL_AMBIENT.xyz;
+				fixed3 diffuse=_LightColor0.rgb*_Color.rgb*max(dot(worldNormal,worldLightDir),0);
+				fixed3 reflect=texCUBE(_Cubemap,i.worldRefl).rgb;
+
+				fixed3 refract=texCUBE(_Cubemap,i.worldRefr).rgb;
+
+				fixed fresnel=_FresnelFactor+(1-_FresnelFactor)*pow(1-dot(worldViewDir,worldNormal),5);
+				
+				UNITY_LIGHT_ATTENUATION(atten,i,i.worldPos);
+
+				//fixed3 color=ambient+lerp(diffuse,reflect,saturate(fresnel))*atten;
+				fixed3 color=ambient+lerp(refract,reflect,saturate(fresnel))*atten;
+
+				return fixed4(color,1.0);
+			}
+			ENDCG
+		}
+	}
+	FallBack "Diffuse"
+	}
+最后的颜色混合部分，可以将漫反射与反射通过菲涅尔反射系数进行插值，也可以将折射与反射通过菲涅尔反射系数进行插值混合，实例效果：      
+![](https://i.imgur.com/QGaecNB.png)  
+
+关于反射和折射部分：      
+
+- step1: 得到环境立方体纹理  
+- step2: 使用函数计算反射或折射方向
+- step3: 利用 texCUBE 对立方体纹理采样 
+- step4: 计算影响系数，对 漫反射与反射或折射/折射与反射 进行插值混合，得到最终颜色 
+
+
+
+
 ----------
 ### 相关参考 ###
 《UnityShader入门精要》    冯乐乐     
