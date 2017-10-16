@@ -2761,6 +2761,61 @@ bias、scale和power是控制项
 - step3: 利用 texCUBE 对立方体纹理采样 
 - step4: 计算影响系数，对 漫反射与反射或折射/折射与反射 进行插值混合，得到最终颜色 
 
+**渲染纹理**    
+现代GPU允许把整个三维场景渲染到中间缓冲中，而不是帧缓冲当中，这个中间缓冲叫做**渲染目标纹理(Render Target Texture RTT)** ,与之对应的是**多重渲染目标(Mutil-Render Target) MRT** 将场景渲染到多个渲染目标纹理中。为此，Unity专门定义了一种纹理类型——渲染纹理(Render Texture)。其使用通常有两种方式：   
+
+- 创建渲染纹理，将某个摄像机的渲染目标设置成该渲染纹理，摄像机的渲染结果就会实时渲染到该纹理中  
+- 通过后期处理抓取当前屏幕图像，Unity将屏幕图像放到一张同等分辨率的渲染纹理中    
+
+**使用渲染纹理实现镜子效果**      
+通过一个额外的摄像机，调整到对应位置，设置渲染目标为一张渲染纹理，将该渲染纹理作为一张2D纹理，在采样是，将UV坐标的进行翻转即可，完整代码：   
+		
+	Shader "Custom/Chapter10_Mirror" {
+	Properties{
+		_MainTex("MainTex",2D)="white"{}
+	}
+	SubShader{
+		
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+			CGPROGRAM
+				#pragma vertex vert
+				#pragma fragment frag
+				#include "Lighting.cginc"
+
+				sampler2D _MainTex;
+				float4        _MainTex_ST;
+
+				struct a2v{
+					float4 vertex:POSITION;
+					float4 texcoord:TEXCOORD0;
+				};
+				struct v2f{
+					float4 pos:SV_POSITION;
+					float4 uv:TEXCOORD0;
+				};
+
+				v2f vert(a2v v){
+					v2f o;
+					o.pos=UnityObjectToClipPos(v.vertex);
+					o.uv=v.texcoord;
+					o.uv.x=1-o.uv.x;   //将uv.x分量进行翻转，实现镜子效果
+
+					return o;
+				}
+				fixed4 frag(v2f i):SV_Target{
+					return tex2D(_MainTex,i.uv);
+				}
+
+			ENDCG
+		}
+	}
+	FallBack "Diffuse"
+	}  
+
+实例效果：  
+![](https://i.imgur.com/zvPv802.png)   
+
 
 
 
