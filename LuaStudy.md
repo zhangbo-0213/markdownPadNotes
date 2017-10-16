@@ -545,7 +545,254 @@ if语句
 		for j=1,2 do
 			print(array3[i][j])
 		end
+	end  
+
+迭代函数   
+	
+	array={"Lua","C#","JAVA"}
+	for k,v in pairs(array) do
+		print(k,v)
 	end
+
+	array[2]=nil
+	for k,v in ipairs(array) do
+		print(k,v)
+	end
+
+	--pairs迭代table,遍历表中所有的元素
+	--ipairs按照索引从1开始，连续遍历，遇到nil会停止遍历
+
+
+	--[[
+	for in 接收返回值的变量列表 迭代函数,状态变量,控制变量 do
+	--执行体
+	end
+	--]]
+
+	--1.调用迭代函数,(将控制变量和状态变量作为参数传入迭代函数)
+	--2.如果迭代函数的返回值为 nil 退出循环
+	--  如果返回值不为nil，将返回值赋值给变量列表，执行循环体
+	--  状态变量在第一次调用时赋值，控制变量则在函数内控制赋值，并有结束条件
+
+	function square(state,control)
+		if(control>=state) then
+			return nil
+		else
+			control=control+1
+			return control,control*control
+		end
+	end
+
+	for i,j in square,9,0 do
+		print(i,j)
+	end
+
+关于表——引用类型
+
+	--[[
+	table类似于C#中的对象，是引用类型
+	--]]
+	
+	mytable={}
+	print(type(mytable))
+	
+	mytable[1]="Lua"
+	mytable["name"]="bobo"
+	
+	newtable=mytable
+	print(newtable[1])
+	--输出 Lua
+
+	mytable[1]="LuaCode"
+	print(newtable[1])
+	--输出 LuaCode 
+
+	newtable[2]="JAVA"
+	print(mytable[2])
+	--输出 JAVA	
+
+操作表的方法 
+
+	-table.xxxmethod
+	mytable={"Lua","C#","JAVA","C++","C"}
+
+	--拼接（可以指定拼接连接符，开始索引和结束索引）
+	print(table.concat(mytable))
+	print(table.concat(mytable,','))
+	print(table.concat(mytable,',',2,4))
+
+	--插入移除数据
+	mytable[6]="PHP"
+	mytable[#mytable+1]="Python"
+	--数据插入,默认插到末尾
+	table.insert(mytable,"JavaScript")
+	print(mytable[#mytable])
+	--指定位置插入
+	table.insert(mytable,2,"Go")
+	for k,v in pairs(mytable) do
+		print(k,v)
+	end
+	--输出   Lua Go C# JAVA C++ C PHP Python JavaScript
+
+	--数据移除
+	table.remove(mytable,2)
+	for k,v in pairs(mytable) do
+		print(k,v)
+	end
+	--输出   Lua C# JAVA C++ C PHP Python JavaScript
+
+	--排序（字母按照ASCII码进行排序,大写字母排在前，小写字母排在后)
+	print("排序前")
+	for k,v in pairs(mytable) do
+		print(k,v)
+	end
+	print("排序后")
+	table.sort(mytable)
+	for k,v in pairs(mytable) do
+		print(k,v)
+	end
+
+	mytable2={23,45,678,39,47,482,37,49}
+	table.sort(mytable2)
+	for k,v in pairs(mytable2)  do
+		print(k,v)
+	end
+
+	--取得最大值
+	function getMax(mytable)
+		local temp=0
+		for k,v in pairs(mytable) do
+			if v>=temp then
+				temp=v
+			end
+		end
+		return temp
+	end
+
+	print("最大值为 ："..getMax(mytable2))
+
+模块  
+18_module1.lua
+	
+	--[[
+	Lua中的模块通过表来实现，将变量和函数作为表的成员
+	--]]
+
+	module1={}
+	module1.var="bobo"
+	module1.func1=function ()
+		print("这是module的一个函数，对应键为 func1")
+	end
+	
+	local function func3()
+		print("这里是局部函数3")
+	end
+	--局部函数无法被模块外部进行调用
+
+	function func2()
+	print("这里是全局函数2")
+	func3()
+	end
+
+	return module1
+
+19_usingModule.lua
+
+	--[[
+	模块的使用 通过
+	require "模块名"
+	--]]
+	require "18_module1"
+	print(module1.var)
+	
+	module1.func1()
+	func2()
+
+元表  
+
+		--[[
+		Lua中 table可以通过对应的key访问到value ，但无法对两个table进行	操作
+		因此Lua提供元表(Metatable),允许定义对表的自定义操作
+		--]]
+		
+		--为普通表扩展元表
+		mytable={"Lua","C#","C","C++"}    --普通表
+		mymetatable={}                    --元表（空表）
+		mytable=setmetatable(mytable,mymetatable)   --将mymetatable	设置成mytable的元表,返回普通表
+		print(mytable[1])                 --输出Lua
+		--另一种设置方式
+		--mytable=setmetatable({},{})     普通表和元表均为空表
+
+		--获得空表的元表
+
+		print(getmetatable(mytable))   --输出table: 008E9918
+		print(mymetatable)             --输出table: 008E9918
+
+		--当元表中存在 __metatable键值时，使用getmetatable，直接返回__metatable键所对应的值，而不是整个元表
+		--这样可以对元表进行保护，防止元表成员被修改
+
+		--元表中的__index作用
+		--[[
+		元表中的__index作为特殊含义的一种键，有两个作用
+		1.__index=function(tab,key) __index后跟一个匿名函数，当访问元表 对应的普通表的元素不存在时，调用该方法
+	  	方法的参数为tab和key
+		--]]
+		mytable={"Lua","C#","Python","C++"}    --普通表
+		mymetatable={
+		__index=function (tab,key)
+			return "C"
+		end
+		}
+		mytable=setmetatable(mytable,mymetatable)
+		
+		print(mytable[7])     --输出C
+		
+		--[[
+		2.__index={} __index后可以跟一个表，当访问元表对应的普通表不存	在时，就会在__index后的表中寻找（如果__index后跟的是表）
+		--]]
+		mytable2={"LUA","C#","Python","C++"}
+		newtable={}
+		newtable[6]="Go"
+		newtable[7]="JavaScript"
+		metatable2={
+			__index=newtable
+		}
+		mytable2=setmetatable(mytable2,metatable2)
+	
+		print(mytable2[7])     --输出Javascript
+
+		-元表中的__newindex作用
+		--[[
+		元表中的__newindex主要针对表的新索引赋值过程，后面可以跟一个匿名函数和一个表
+		1.__newindex=function (tab,key,value)   __newindex后跟匿名函数
+		--]]
+		mytable3={"Lua","C#","Python","Go"}
+		metatable3={
+		__newindex=function (tab,key,value)   --当对应普通表的新索引赋值时会调用该方法
+		print("赋值过程："..key..":"..value)
+		rawset(tab,key,value)    --如果要完成对应新增赋值到元表，则需要调用该函数
+		end
+		}
+		myt	able3=setmetatable(mytable3,metatable3)
+
+		mytable3[1]="C++"
+		mytable3[5]="C"        --输出 赋值过程：5：C  只针对新索引
+		print(mytable3[5])     --输出 C
+
+		--[[
+		2.元表中的__newindex后跟一个表，元表对应的普通表新增元素会放入__newindex后跟的表内
+		--]]
+
+		mytable4={"Lua","C#","Python","Go"}
+		newtable2={}
+		metatable4={
+		__newindex=newtable2
+		}
+		mytable4=setmetatable(mytable4,metatable4)
+
+		mytable4[5]="C++"
+		print(mytable4[5])          --输出nil
+		print(newtable2[5])         --输出C++
 
 ----------
 参考资料：    
