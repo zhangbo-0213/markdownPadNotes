@@ -2814,9 +2814,268 @@ bias、scale和power是控制项
 	}  
 
 实例效果：  
-![](https://i.imgur.com/zvPv802.png)   
+![](https://i.imgur.com/zvPv802.png)     
+
+**玻璃效果**     
+Unity Shader中可以使用GrabPass完成对屏幕图像的抓取。定义GrabPass后，Unity将当前屏幕图像绘制在一张纹理中，使用GrabPass模拟玻璃透明效果，可以对物体后面的图像做更复杂的处理（使用法线模拟折射效果），而不是像使用透明度混合，只是颜色上的混合。     
+在使用GrabPass进行透明效果模拟时，要注意**渲染顺序的设置** ，先保证场景中所有不透明物体已经绘制在屏幕上，再对屏幕进行抓取图像，因此一般设置成  "Queue"="Transparent"
+
+实现玻璃效果：   
+
+- Step1 获取指定位置的立方体纹理，通过反射方向采样得到反射颜色
+- Step2 获取屏幕抓取图像，通过法线纹理得到法线方向作为影响值与影响因子相乘，调整获取的屏幕图像扭曲程度来模拟折射   
+- Step3 将两者颜色进行混合，通过混合值调整反射和折射的混合程度  
+
+完整代码：    
+
+	Shader "Custom/Chapter10_GlassRefraction" {
+	Properties{
+		_MainTex("Main Tex",2D)="white"{}
+		_BumpTex("Bump Tex",2D)="bump"{}
+		_CubeMap("Cube Map",Cube)="_Skybox"{}
+		_Distortion("Distortion",Range(0,100))=10
+		_RefractAmount("Refract Amount",Range(0.0,1.0))=1.0
+	}
+	SubShader{
+		Tags{"Queue"="Transparent" "RenderType"="Opaque"}
+		//指定渲染队列为"Transparent"，确保所有不透明物体先渲染完成
+		GrabPass {"_RefractionTex"}
+		//声明GrabPass 该Pass会将屏幕抓取图像存储到名为"_RefractionTex"的纹理中
+		Pass{
+			CGPROGRAM
+				#pragma vertex vert
+				#pragma fragment frag 
+
+				#include "UnityCG.cginc"
+
+				sampler2D _MainTex;
+				float4 _MainTex_ST;
+				sampler2D _BumpTex;
+				float4 _BumpTex_ST;
+				samplerCUBE _CubeMap;
+				float _Distortion;
+				float _RefractAmount;
+				sampler2D _RefractionTex;   //存储GrabPass抓取的屏幕图像
+				float4 _RefractionTex_TexelSize;  //得到屏幕图像的纹素值，在做偏移计算时使用
+
+				struct a2v{
+					float4 vertex:POSITION;
+					float3 normal:NORMAL;
+					float4 tangent:TANGENT;
+					float4 texcoord:TEXCOORD0;
+				};
+
+				struct v2f{
+					float4 pos:SV_POSITION;
+					float4 uv:TEXCOORD0;
+					float4 scrPos:TEXCOORD1;
+					float4 TtoW0:TEXCOORD2;
+					float4 TtoW1:TEXCOORD3;
+					float4 TtoW2:TEXCOORD4;
+				};
+
+				v2f vert(a2v v){
+					v2f o;
+					o.pos=UnityObjectToClipPos(v.vertex);
+					o.scrPos=ComputeGrabScreenPos(o.pos);
+					o.uv.xy=TRANSFORM_TEX(v.vertex,_MainTex);
+					o.uv.zw=TRANSFORM_TEX(v.vertex,_BumpTex);
+
+					float3 worldPos=mul(unity_ObjectToWorld,v.vertex).xyz;
+
+					fixed3 worldNormal=UnityObjectToWorldNormal(v.normal);
+					fixed3 worldTangent=UnityObjectToWorldDir(v.tangent.xyz);
+					fixed3 worldBinormal=cross(worldNormal,worldTangent)*v.tangent.w;
+
+					o.TtoW0=(worldTangent.x,worldBinormal.x,worldNormal.x,worldPos.x);
+					o.TtoW1=(worldTangent.y,worldBinormal.y,worldNormal.y,worldPos.y);
+					o.TtoW2=(worldTangent.z,worldBinormal.z,worldNormal.z,worldPos.z);
+
+					return o;
+				}
+
+				fixed4 frag(v2f i):SV_Target{
+					float3 worldPos=(i.TtoW0.w,i.TtoW1.w,i.TtoW2.w);
+					fixed3 worldViewDir=normalize(UnityWorldSpaceViewDir(worldPos));
+
+					fixed3 bump=UnpackNormal(tex2D(_BumpTex,i.uv.zw));
+
+					float2 offset=bump*_Distortion*_RefractionTex_TexelSize.xy;
+					i.scrPos.xy=offset+i.scrPos.xy;
+					fixed3 refrColor=tex2D(_RefractionTex,i.scrPos.xy/i.scrPos.w).rgb;
+
+					bump=normalize(half3(dot(i.TtoW0.xyz,bump),dot(i.TtoW1.xyz,bump),dot(i.TtoW2.xyz,bump)));
+					fixed3 reflectDir=reflect(-worldViewDir,bump);
+					fixed4 texColor=tex2D(_MainTex,i.uv.xy);
+					fixed3 reflColor=texCUBE(_CubeMap,reflectDir).rgb*texColor.rgb;
+
+					fixed3 finalColor=reflColor*(1-_RefractAmount)+refrColor*_RefractAmount;
+
+					return fixed4(finalColor,1.0);
+
+				}
+			ENDCG
+		}
+	}
+	FallBack "Tranparent/VertexLit"
+	}  
+
+这里需要解释一下 **ComputeGrabScreenPos**函数，与** ComputeScreenPos**类似，输入为顶点在裁剪空间下的坐标，得到屏幕坐标，但是这里需要注意的是， **此时得到的坐标并没有进行归一化，也就是还没有除w分量**，这一点可以从ComputeScreenPos的定义中看出来：      
+![](https://i.imgur.com/TpiPGkO.png)      
+pos是顶点在裁剪空间的坐标，_ProjectionParams.X默认情况下为1，针对不同平台可能会做翻转处理，实际上得到的结果：     
+![](https://i.imgur.com/RV9eAZk.png)     
+也就是说，**此时得到的坐标并不是最终屏幕图像上的坐标**，因此在片元着色器中在对抓取的屏幕图像取样时，会有 除以w分量的操作
+		
+	tex2D(_RefractionTex,i.scrPos.xy/i.scrPos.w)
+
+而这样做的原因是，在顶点着色器内直接除w分量会影响插值的结果，因而将该操作保留到片元着色器中进行逐像素处理。  
+最终效果：      
+![](https://i.imgur.com/Djeuiad.jpg)     
+扭曲因子的值设为100，混合值设为1（全为折射效果）      
+![](https://i.imgur.com/5PdERdE.jpg)    
+扭曲因子的值设为0，混合值设为1（全为折射效果）     
+可以看到这个时候，几乎看不到物体，这是由于物体表面由物体后面渲染的屏幕图像区域进行了着色，所以这种看似透明的效果是通过设置正确的渲染顺序，抓取屏幕图像实现的，而不是给物体本身设置透明材质。
+
+**程序纹理**     
+程序纹理是通过计算机计算生成的图像，使用特定的算法创建个性化图案或非常真实的自然元素。    
+创建一个波点纹理  
+完整代码：   
+	
+	[ExecuteInEditMode]
+	public class ProceduralTextureGeneration : MonoBehaviour {
+
+    public Material material = null;
+    #region Material properties
+    [SerializeField,SetProperty("textureWidth")]
+    private int m_textureWidth = 512;
+    public int textureWidth {
+        get {
+            return m_textureWidth;
+        }
+        set {
+            m_textureWidth = value;
+            _UpdateMaterial();
+        }
+    }
+
+    [SerializeField, SetProperty("backgroundColor")]
+    private Color m_backgroundColor = Color.white;
+    public Color backgroundColor {
+        get {
+            return m_backgroundColor;
+        }
+        set {
+            m_backgroundColor = value;
+            _UpdateMaterial();
+        }
+    }
+
+    [SerializeField, SetProperty("circleColor")]
+    private Color m_circleColor = Color.yellow;
+    public Color circleColor {
+        get {
+            return m_circleColor;
+        }
+        set {
+            m_circleColor = value;
+            _UpdateMaterial();
+        }
+    }
+
+    [SerializeField, SetProperty("blurFactor")]
+    private float m_blurFactor = 2.0f;
+    public float blurFactor {
+        get {
+            return m_blurFactor;
+        }
+        set {
+            m_blurFactor = value;
+            _UpdateMaterial();
+        }
+    }
+    #endregion
+
+    private Texture2D m_generateTexture = null;
 
 
+    // Use this for initialization
+    void Start () {
+        if (material == null)
+        {
+            Renderer renderers = gameObject.GetComponent<Renderer>();
+            if (renderers == null)
+            {
+                Debug.LogWarning("Cannot find a renderer.");
+                return;
+            }
+            material = GetComponent<Renderer>().sharedMaterial;
+        }
+        _UpdateMaterial();
+    }
+	
+	// Update is called once per frame
+    private void _UpdateMaterial() {
+        if (material != null)
+        {
+            m_generateTexture = _GenerateProceduralTexture();
+            material.SetTexture("_MainTex",m_generateTexture);
+        }
+    }
+
+    private Texture2D _GenerateProceduralTexture()
+    {
+        Texture2D proceduralTexture=new Texture2D(textureWidth,textureWidth);
+
+        //定义圆与圆之间的距离
+        float circleInterval = textureWidth/4.0f;
+        //定义圆的半径
+        float radius = textureWidth/10.0f;
+        //定义模糊系数
+        float edgeBlur = 1.0f/blurFactor;
+
+        for (int w = 0; w < textureWidth; w++)
+        {
+            for (int h = 0; h < textureWidth; h++)
+            {
+                Color pixel = backgroundColor;
+
+                //绘制9个圆
+                for (int i = 0; i < 3; i++)
+                {
+                    for (int j = 0; j < 3; j++)
+                    {
+                        //计算当前所绘制圆的位置
+                        Vector2 circleCenter=new Vector2(circleInterval*(i+1),circleInterval*(j+1));
+                        //计算当前像素与圆边界的距离
+                        float dist = Vector2.Distance(new Vector2(w, h), circleCenter)-radius;
+
+                        //模糊圆的边界
+                        Color color = _MixColor(circleColor, new Color(pixel.r,pixel.g,pixel.b,0.0f),Mathf.SmoothStep(0f,1f,dist*edgeBlur));
+
+                        //与之前得到的颜色混合
+                        pixel = _MixColor(pixel, color, color.a);
+                    }
+                }
+                proceduralTexture.SetPixel(w,h,pixel);
+            }
+        }
+        proceduralTexture.Apply();
+        return proceduralTexture;
+    }
+
+
+    private Color _MixColor(Color color0, Color color1, float mixFactor)
+    {
+        Color mixColor = Color.white;
+        mixColor.r = Mathf.Lerp(color0.r, color1.r, mixFactor);
+        mixColor.g = Mathf.Lerp(color0.g, color1.g, mixFactor);
+        mixColor.b = Mathf.Lerp(color0.b, color1.b, mixFactor);
+        mixColor.a = Mathf.Lerp(color0.a, color1.a, mixFactor);
+        return mixColor;
+    }
+	}
+实例效果：    
+![](https://i.imgur.com/0GAm0qP.png)     
 
 
 ----------
