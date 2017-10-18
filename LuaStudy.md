@@ -773,7 +773,7 @@ if语句
 		rawset(tab,key,value)    --如果要完成对应新增赋值到元表，则需要调用该函数
 		end
 		}
-		myt	able3=setmetatable(mytable3,metatable3)
+		mytable3=setmetatable(mytable3,metatable3)
 
 		mytable3[1]="C++"
 		mytable3[5]="C"        --输出 赋值过程：5：C  只针对新索引
@@ -794,6 +794,42 @@ if语句
 		print(mytable4[5])          --输出nil
 		print(newtable2[5])         --输出C++
 
+		--给表添加操作符[__add对应 两个表相加的操作]
+		mytable5={"Lua","C#","Python","Go"}
+		newtable5={"PHP","Java"}
+		mymetatable5={
+		__add=function(tab,newtab)
+			local length=#tab
+			for k,v in pairs(newtab) do
+				tab[length+k]=v
+			end
+			return tab
+		end
+		}
+		mytable5=setmetatable(mytable5,mymetatable5)
+		v1=newtable5+mytable5
+	
+		for k,v in pairs(v1) do
+			print(k,v)
+		end
+		--两个表使用+操作符，只要其中一个表的元表定义了__add的元方法就可以进行相加操作
+
+		--__Call元方法，可以将表作为函数使用
+		mytable6={"Lua","C#","Python","Go"}
+		mymetatable6={
+		__call=function(tab,arg)
+			print(arg)
+			return arg
+		end
+		}
+		mytable6=setmetatable(mytable6,mymetatable6)
+		print(mytable6("Java"))
+		--[[输出
+		Java   --__call调用输出一次
+		Java
+		--]] 
+
+		
 ----------
 参考资料：    
 学习网址：[http://www.runoob.com/lua/lua-tutorial.html](http://www.runoob.com/lua/lua-tutorial.html)
