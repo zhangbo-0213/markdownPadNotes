@@ -829,7 +829,76 @@ if语句
 		Java
 		--]] 
 
+		--tostring元方法,当把表当做字符串使用时，会返回tostring元方法所返回的字符串（如果已定义tostring元方法
+		--例如：可以当直接打印一个表时，输出其所有的元素而不是表类型和地址
+		mytable7={"Lua","C#","Python","Go"}
+		mymetatable7={
+		__tostring=function(tab)
+		local str=""
+		for k,v in pairs(tab) do
+			str=str..v..","
+			end
+			return str
+		end
+		}
+		mytable7=setmetatable(mytable7,mymetatable7)
+		print(mytable7)
+		--输出 Lua,C#,Python,Go,    
+
+协同程序
+
+		--[[
+		协同程序或协同函数是指在调用过程中可以指定挂起和运行的程序或函	数数
+		线程在同一时间可运行多个，由CPU进行调度，而协程在同一时刻只能	运行一个，其他的在该时刻会被挂起
+		--]]
+	
+	
+		--定义和启动协同程序（函数）
+	
+		--1.定义一个协同程序 使用 coroutine.create ,会返回一个协同程序
+		co=coroutine.create(
+			function(a,b)
+				print(a+b)
+			end
+		)
 		
+		--2.启动或暂停一个协同程序 使用 coroutine.resume(协同程	序名,参数)
+		coroutine.resume(co,3,4)
+		
+		
+		--第二种定义和启动协同程序的方式,使用 coroutine.wrap() 启	动
+		co1=coroutine.wrap(
+			function (a,b)
+				print(a+b)
+			end
+		)
+		--调用的时候，直接使用协同程序名调用
+		co1(5,10)
+	
+	
+		--resume可以启动一个协程，也可以暂停一个正在运行的协程
+		--调用协程时，内部遇到 yield() 会被挂起，运行协程后外部的	代码，当	再次使用resume 时，
+		--可以回到协程内部继续执行 yield() 后面的代码
+		co2=coroutine.create(
+			function(a,b)
+				print(a+b)
+				coroutine.yield()
+				print(a-b)
+			end
+		)
+
+		coroutine.resume(co2,20,30)
+		print("i am Lua")
+		--输出 ：
+		--50
+		--i am Lua
+		coroutine.resume(co2)
+		--输出 ：
+		--50
+		--i am Lua
+		-- -10
+
+
 ----------
 参考资料：    
 学习网址：[http://www.runoob.com/lua/lua-tutorial.html](http://www.runoob.com/lua/lua-tutorial.html)
