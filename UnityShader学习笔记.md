@@ -3160,7 +3160,505 @@ pos是顶点在裁剪空间的坐标，_ProjectionParams.X默认情况下为1，
 	FallBack "Transparent/VertexLit"
 	}
 
+- **滚动背景**    
+滚动背景一般使用多个层以不同的速度进行滚动，滚动的关键在于使滚动方向上的纹理坐标的增量与时间变量相乘，这样随着时间的变化，滚动方向上的采样坐标不断变换，画面也能连续变化。   
 
+完整代码： 
+   
+		Shader "Custom/Chapter11_ScrollingBackground" {
+	Properties{
+		_MainTex("Base Layer",2D)="white"{}
+		_DetialTex("Second Layer",2D)="white"{}
+		_ScrollX("Base Layer Scroll Speed",Float)=1.0
+		_Scroll2X("Second Layer Scroll Speed",Float)=1.0
+		_Multiplier("Layer Multiplier",Float)=1
+	}
+	SubShader{
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "Lighting.cginc"
+
+			sampler2D _MainTex;
+			float4         _MainTex_ST;
+			sampler2D _DetialTex;
+			float4        _DetialTex_ST;
+			float			_ScrollX;
+			float			_Scroll2X;
+			float			_Multiplier;
+
+			struct a2v{
+				float4 vertex:POSITION;
+				float4 texcoord:TEXCOORD0;
+			};
+
+			struct v2f {
+				float4 pos:SV_POSITION;
+				float4 uv:TEXCOORD0;
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.uv.xy=TRANSFORM_TEX(v.texcoord,_MainTex)+frac(float2(_ScrollX,0)*_Time.y);
+				o.uv.zw=TRANSFORM_TEX(v.texcoord,_DetialTex)+frac(float2(_Scroll2X,0)*_Time.y);
+				//frac取小数函数，使取样坐标在[0,1]范围内，背景连续重复滚动
+
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				fixed4 baseLayer=tex2D(_MainTex,i.uv.xy);
+				fixed4 secondLayer=tex2D(_DetialTex,i.uv.zw);
+
+				fixed4 c=lerp(baseLayer,secondLayer,secondLayer.a);
+
+				c.rgb*=_Multiplier;
+				//_Multiplier用来控制整体亮度
+				return c;
+			}
+			ENDCG
+		}
+	}
+	FallBack "VertexLit"
+	}   
+实例效果：   
+![](https://i.imgur.com/q1dHLu3.png)            
+![](https://i.imgur.com/rLdoCEf.png)        
+
+- **顶点动画**    
+游戏中通常使用顶点动画模拟飘动旗帜、湍流小溪的效果，其主要方式是使模型顶点随着时间变化而变化。     
+
+完整代码：       
+
+		Shader "Custom/Chapter11_Water" {
+	Properties{
+		_Color("Main Color",Color)=(1,1,1,1)
+		_MainTex("MainTex",2D)="white"{}
+		_Magnitude("Magnitude",Float)=1
+		_Frequency("Frequency",Float)=1
+		_InvWaveLength("InvWaveLength",Float)=10
+		_Speed("Speed",Float)=0.5
+	}
+	SubShader{
+	Tags{"Queue"="Transparent" "IgnoreProjector"="True" "RenderType"="Transparent" "DisableBatching"="True"}
+			//为透明效果设置对应标签，这里“DisableBatching”的标签是关闭批处理，
+			//包含模型空间顶点动画的Shader是需要特殊处理的Shader，
+			//而批处理会合并所有相关的模型，这些模型各自的模型空间会丢失
+			//而顶点动画需要在模型空间对顶点进行偏移
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+			ZWrite Off
+			Blend SrcAlpha OneMinusDstAlpha
+			Cull Off
+			CGPROGRAM
+				#pragma vertex vert
+				#pragma fragment frag
+				#include "Lighting.cginc"
+				#include "UnityCG.cginc"
+
+				fixed4 _Color;
+				sampler2D _MainTex;
+				float4 _MainTex_ST;
+				float _Magnitude;
+				float _Frequency;
+				float _InvWaveLength;
+				float _Speed;
+
+				struct a2v{
+					float4 vertex:POSITION;
+					float4 texcoord:TEXCOORD0;
+				};
+
+				struct v2f{
+					float4 pos:SV_POSITION;
+					float2 uv:TEXCOORD0;
+				};
+
+				v2f vert(a2v v){
+					v2f o;
+					float4 offset;
+					offset.yzw=float3(0.0,0.0,0.0);
+					offset.x=sin(_Frequency*_Time.y+v.vertex.x*_InvWaveLength+v.vertex.y*_InvWaveLength+v.vertex.z*_InvWaveLength)*_Magnitude;
+				    //在顶点进行空间变换前，对x分量进行正弦操作
+					o.pos=UnityObjectToClipPos(v.vertex+offset);  
+
+					o.uv=TRANSFORM_TEX(v.texcoord,_MainTex);
+					o.uv+=float2(0.0,_Time.y*_Speed);
+					//进行纹理动画
+
+					return o;
+				}
+
+				fixed4 frag(v2f i):SV_Target{
+					fixed4 c=tex2D(_MainTex,i.uv);
+					c.rgb*=_Color.rgb;
+
+					return c;
+				}
+			ENDCG
+		}
+	}
+	FallBack "Transparent/VertexLit"
+	}
+
+- **广告牌技术**     
+广告牌技术是另一种常见的顶点动画。广告牌会根据视角方向来旋转一个被纹理着色的多边形，使多边形看起来始终朝着摄像机。      
+广告牌技术的本质是构建旋转矩阵。计算过程中先根据初始计算得到目标的表面法线（例如视角方向）和指向上的方向，这两者的方向往往不是垂直的，根据这两者的方向做叉乘得到垂直于两者的方向，再根据这个得到的方向，假定之前的两个方向某一个不变，计算另一个垂直的方向，这样得到三个正交的方向，计算过程类似于：      
+![](https://i.imgur.com/V9xuW3c.png)       
+在广告牌技术中需要指定一个锚点，这个锚点在旋转过程中是固定不变的，以此来确定多边形在空间中的位置。     
+
+完整代码：     
+
+		Shader "Custom/Chapter11_Billboarding" {
+		Properties{
+			_Color("Color",Color)=(1,1,1,1)
+			_MainTex("MainTex",2D)="white"{}
+			_VerticalBillboarding("VerticalBillboarding",Range(0,1))=1
+		}
+		SubShader{
+			Tags{"Queue"="Transparent" "IgnoreProjector"="True" "RendererType"="Transparent" "DisableBatching"="True"}
+			Pass{
+				Tags{"LightMode"="ForwardBase"}
+				ZWrite Off
+				Blend SrcAlpha OneMinusSrcAlpha
+				Cull Off  
+				CGPROGRAM 
+				#pragma vertex vert
+				#pragma fragment frag
+				#include "UnityCG.cginc"
+				#include "Lighting.cginc"
+
+				fixed4 _Color;
+				sampler2D _MainTex;
+				float4 _MainTex_ST;
+				float _VerticalBillboarding;
+
+				struct a2v{
+					float4 vertex:POSITION;
+					float4 texcoord:TEXCOORD0;
+
+				};
+				struct v2f{
+					float4 pos:SV_POSITION;
+					float2 uv:TEXCOORD0;
+				};
+
+				v2f vert(a2v v){
+					v2f o;
+					float3 center=float3(0,0,0);
+					//选择模型空间的原点作为变换锚点
+					float3 viewer=mul(unity_WorldToObject,float4(_WorldSpaceCameraPos,1));
+					//将模型空间的观察方向作为法线方向
+					float3 normalDir=viewer-center;
+					normalDir.y=normalDir.y*_VerticalBillboarding;
+					normalDir=normalize(normalDir);
+					//当_VerticalBillboarding的值为1时，法线方向固定为视角方向，
+					//当_VerticalBillboarding的值为0时，法线在Y方向上没有分量，那么向上的方向固定为(0,1,0)，这样才能保证与法线方向垂直
+					float3 upDir=abs(normalDir.y)>0.999 ? float3(0,0,1) : float3(0,1,0);
+					//这里对向上方向是否与法向方向相平行，防止得到错误的叉乘结果
+					float3 rightDir=normalize(cross(normalDir,upDir));
+					upDir=normalize(cross(normalDir,rightDir));  
+
+					float3 offset=v.vertex.xyz-center;
+					float3 localPos=center+rightDir*offset.x+upDir*offset.y+normalDir*offset.z;  
+
+					o.pos=UnityObjectToClipPos(float4(localPos,1));
+					o.uv=TRANSFORM_TEX(v.texcoord,_MainTex);
+					return o;
+
+				}
+
+				fixed4 frag(v2f i):SV_Target{
+					fixed4 c=tex2D(_MainTex,i.uv);
+					c.rgb*=_Color.rgb;
+					return c;
+				}
+				ENDCG
+			}
+		}
+		FallBack  "Transparent/VertexLit"
+	}
+
+注意事项：    
+
+- 在顶点变换的Shader中需要做特殊处理，即关闭批处理，这样能防止Unity自动对相关模型做合并处理，从而丢失模型空间。   
+- 在对顶点进行变换后，如果想要得到正确的阴影，需要添加一个自定义的ShadowCaster Pass，否则得到的阴影会是变换前的阴影。自定义的Pass中，需要使用内置的宏。完整代码为:   
+
+		Shader "Custom/Chapter 11_Vertex Animation With Shadow" {
+		Properties {
+		_MainTex ("Main Tex", 2D) = "white" {}
+		_Color ("Color Tint", Color) = (1, 1, 1, 1)
+		_Magnitude ("Distortion Magnitude", Float) = 1
+		_Frequency ("Distortion Frequency", Float) = 1
+		_InvWaveLength ("Distortion Inverse Wave Length", Float) = 10
+		_Speed ("Speed", Float) = 0.5
+		}
+		SubShader {
+	
+		Tags {"DisableBatching"="True"}
+		Pass {
+		Tags { "LightMode"="ForwardBase" }
+		Cull Off
+		CGPROGRAM
+		#pragma vertex vert
+		#pragma fragment frag
+		#include "UnityCG.cginc"
+		sampler2D _MainTex;
+		float4 _MainTex_ST;
+		fixed4 _Color;
+		float _Magnitude;
+		float _Frequency;
+		float _InvWaveLength;
+		float _Speed;
+		struct a2v {
+		float4 vertex : POSITION;
+		float4 texcoord : TEXCOORD0;
+		};
+		struct v2f {
+		float4 pos : SV_POSITION;
+		float2 uv : TEXCOORD0;
+		};
+		v2f vert(a2v v) {
+		v2f o;
+		float4 offset;
+		offset.yzw = float3(0.0, 0.0, 0.0);
+		offset.x = sin(_Frequency * _Time.y + v.vertex.x * _InvWaveLength + v.vertex.y * _InvWaveLength + v.vertex.z * _InvWaveLength) * _Magnitude;
+		o.pos = mul(UNITY_MATRIX_MVP, v.vertex + offset);
+		o.uv = TRANSFORM_TEX(v.texcoord, _MainTex);
+		o.uv += float2(0.0, _Time.y * _Speed);
+		return o;
+		}
+		fixed4 frag(v2f i) : SV_Target {
+		fixed4 c = tex2D(_MainTex, i.uv);
+		c.rgb *= _Color.rgb;
+		return c;
+		}
+		ENDCG
+		}
+		
+		Pass {
+		Tags { "LightMode" = "ShadowCaster" }
+		CGPROGRAM
+		#pragma vertex vert
+		#pragma fragment frag
+		#pragma multi_compile_shadowcaster
+		#include "UnityCG.cginc"
+		float _Magnitude;
+		float _Frequency;
+		float _InvWaveLength;
+		float _Speed;
+		struct v2f {
+		V2F_SHADOW_CASTER;
+		};
+		v2f vert(appdata_base v) {
+		v2f o;
+		float4 offset;
+		offset.yzw = float3(0.0, 0.0, 0.0);
+		offset.x = sin(_Frequency * _Time.y + v.vertex.x * _InvWaveLength + v.vertex.y * _InvWaveLength + v.vertex.z * _InvWaveLength) * _Magnitude;
+		v.vertex = v.vertex + offset;
+		TRANSFER_SHADOW_CASTER_NORMALOFFSET(o)
+		return o;
+		}
+		fixed4 frag(v2f i) : SV_Target {
+		SHADOW_CASTER_FRAGMENT(i)
+		}
+		ENDCG
+		}
+		}
+		FallBack "VertexLit"
+		}
+
+
+### 屏幕后处理效果 ###
+屏幕后处理是指渲染完整个场景得到屏幕图像后，再对屏幕图像做处理，实现屏幕特效。  
+
+实现屏幕后处理效果的关键在于得到渲染后的屏幕图像,Unity提供了对应的接口 **OnRenderImage** ,其函数声明       
+
+	MonoBehaviour.OnRenderImage(RnederTexture src, RenderTexture dest)   
+
+参数 **src** ：源纹理，用于存储当前渲染的得到的屏幕图像  
+参数 **dest** ：目标纹理，经过一系列操作后，用于显示到屏幕的图像     
+
+在OnRenderImage函数中，通常调用 **Graphics.Blit函数** 完成对渲染纹理的**处理**      
+
+	public static void Blit(Texture src,RenderTexture dest);     
+	public static void Blit(Texture src, RenderTexture dest, Material mat, int pass=-1);
+	public static void Blit(Texture src,Material mat, int pass=-1);   
+参数 **src** ：源纹理 通常指当前屏幕渲染纹理或上一步处理得到的纹理     
+参数 **dest** : 目标渲染纹理，如果值为null，则会直接将结果显示到屏幕上       
+参数 **mat** : 使用的材质，该材质使用的Unity Shader将会进行各种屏幕后处理操作, src对应的纹理会传递给Shader中_MainTex的纹理属性    
+参数 **pass**：默认值为-1，表示依次调用Shader内所有Pass，否则调用索引指定的Pass      
+
+默认情况下，**OnRenderImage** 函数会在所有不透明和透明Pass执行完后被调用，若想在不透明Pass执行完后调用，即不对透明物体产生影响，可以在OnRenderImage函数前添加**ImageEffectOpaque**的属性实现。  
+
+Unity中实现屏幕后处理出效果，通常步骤：  
+1. 在摄像机添加屏幕后处理脚本，该脚本中会实现OnRenderImage函数获取当前屏幕渲染纹理    
+2. 调用Graphics.Blit函数使用特定Shader对当前图像进行处理，再将最终目标纹理渲染到屏幕上。对于复杂的后处理特效，需要多次调用Graphics.Blit函数     
+
+在进行屏幕后处理前，需要检查是否满足后处理条件，创建一个用于屏幕后处理效果的基类，在实现屏幕后处理效果时，只需继承该基类，再实现派生类中的具体操作，完整代码：   
+
+	[ExecuteInEditMode]
+	[RequireComponent(typeof(Camera)]
+	public class PostEffectsBase : MonoBehaviour {
+   	protected void CheckResources() {
+        bool isSupported = CheckSupport();
+        if (isSupported == false) {
+            NotSupport();
+        }
+    }
+
+    protected bool CheckSupport() {
+        if (SystemInfo.supportsImageEffects == false || SystemInfo.supportsRenderTextures == false) {
+            return false;
+        }
+        return true;
+    }
+
+    protected void NotSupport() {
+        enabled = false;
+    }
+	// Use this for initialization
+	void Start () {
+        //检查资源和条件是否支持屏幕后处理
+        CheckResources();  
+	}
+
+    protected Material CheckShaderAndCreateMaterial(Shader shader, Material material) {
+        if (shader == null) {
+            return null;
+        }
+        if (shader.isSupported && material && material.shader == shader) {
+            return material;
+        }
+        if (!shader.isSupported)
+        {
+            return null;
+        }
+        else {
+            material = new Material(shader);
+            material.hideFlags = HideFlags.DontSave;
+            if (material)
+                return material;
+            else
+                return null;
+        }
+    }
+	}
+
+**调整屏幕的亮度、饱和度和对比度**   
+摄像机脚本：  
+
+	public class BrightnessSaturationAndContrast : PostEffectsBase{
+
+    public Shader briSatConShader;
+    private Material briSatConMaterial;
+
+    public Material material {
+        get {
+            briSatConMaterial = CheckShaderAndCreateMaterial(briSatConShader, briSatConMaterial);
+            return briSatConMaterial;
+                }
+    }
+
+    [Range(0.0f, 3.0f)]
+    public float brightness = 1.0f;
+    [Range(0.0f, 3.0f)]
+    public float saturation = 1.0f;
+    [Range(0.0f, 3.0f)]
+    public float contrast = 1.0f;
+
+
+    void OnRenderImage(RenderTexture src,RenderTexture dest) {
+        if (material != null)
+        {
+            material.SetFloat("_Brightness", brightness);
+            material.SetFloat("_Saturation", saturation);
+            material.SetFloat("_Contrast", contrast);
+            //若材质可用，将参数传递给材质，在调用Graphics.Blit进行处理
+            Graphics.Blit(src, dest, material);
+        }
+        else {
+            //否则将图像直接输出到屏幕，不做任何处理
+            Graphics.Blit(src, dest);
+        }
+    }
+	}    
+继承自屏幕处理基类PostEffectsBase，指定shader，并根据该shader创建新的材质，通过OnRenderImage方法和Graphics.Blit方法将参数传递到shader中，完成着色，shader代码：   
+
+	Shader "Custom/Chapter12_BrightnessSaturateAndContrast" {
+	Properties{
+		_MainTex("Maintex",2D)="white"{}
+		_Brightness("Brightness",Float)=1
+		_Saturation("Saturation",Float)=1
+		_Contrast("Contrast",Float)=1
+
+		//Graphics.Blit(src,dest,material)会将第一个参数传递给Shader中名为_MainTex的属性
+	}
+	SubShader{
+		Pass{
+			ZTest Always
+			Cull Off
+			ZWrite Off
+
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "UnityCG.cginc"
+
+			sampler2D _MainTex;
+			float4 _MainTex_ST;
+			half _Brightness;
+			half _Saturation;
+			half _Contrast;
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				float2 uv:TEXCOORD0;
+			};
+
+			//appdata_img为Unity内置的结构体，只包含图像处理必须的顶点坐标和纹理坐标
+			v2f vert(appdata_img v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.uv=v.texcoord; //屏幕后处理得到的纹理和要输出的纹理坐标是相同的
+
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				fixed4 renderTex=tex2D(_MainTex,i.uv);  
+
+				//应用明亮度
+				fixed3 finalColor=renderTex.rgb*_Brightness;
+
+				//应用饱和度，乘以一定系数
+				fixed luminance=0.2125*renderTex.r+0.7154*renderTex.g+0.0721*renderTex.b;
+				fixed3 luminanceColor=fixed3(luminance,luminance,luminance);
+				finalColor=lerp(luminanceColor,finalColor,_Saturation);
+
+				//应用对比度
+				fixed3 avgColor=fixed3(0.5,0.5,0.5);
+				finalColor=lerp(avgColor,finalColor,_Contrast);
+
+				return fixed4(finalColor,renderTex.a);
+			}
+			ENDCG
+		}
+	}
+	FallBack Off
+	}    
+实现效果：          
+调节前：   
+![](https://i.imgur.com/uUfExxa.png)        
+调节后：    
+![](https://i.imgur.com/z3ZnYEO.png)     
+摄像机脚本参数设置：    
+![](https://i.imgur.com/yNxn11z.png)
+
+		
 
 ----------
 ### 相关参考 ###
