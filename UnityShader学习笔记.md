@@ -3656,9 +3656,306 @@ Unity中实现屏幕后处理出效果，通常步骤：
 调节后：    
 ![](https://i.imgur.com/z3ZnYEO.png)     
 摄像机脚本参数设置：    
-![](https://i.imgur.com/yNxn11z.png)
+![](https://i.imgur.com/yNxn11z.png)     
+
+**边缘检测效果**      
+屏幕后处理中的边缘检测是利用一些边缘检测算子对图像中的像素进行**卷积操作**,关于图像处理中的卷积计算，可以参考这篇博客（[http://www.cnblogs.com/freeblues/p/5738987.html](http://www.cnblogs.com/freeblues/p/5738987.html)）   
+常见的边缘检测算子有：      
+![](https://i.imgur.com/imCZYof.png)     
+边缘检测算子包含两个方向的卷积核，用来计算水平方向和竖直方向的梯度值，得到两个方向的梯度值，而整体的梯度值可以是两个方向上的梯度值平方和开根，为了节约性能可以是两个方向梯度值的绝对值求和，整体梯度的值越大，说明该像素点则越有可能是边缘位置。
+
+边缘检测过程中主要是获取中心像素点及周围的像素点的值，再与边缘检测算子做乘积，计算出对应的梯度，再通过梯度进行插值
+完整代码：   
+
+	Shader "Custom/Chapter12_EdgeDetetion" {
+	Properties{
+		_MainTex("MainTex",2D)="white"{}
+		_EdgeOnly("Edge Only",Float)=1.0
+		_EdgeColor("Edge Color",Color)=(0,0,0,1)
+		_BackgroundColor("BackgroundColor",Color)=(1,1,1,1)
+	}
+	SubShader{
+		Pass{
+			ZTest Always
+			Cull Off
+			ZWrite Off
+
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "UnityCG.cginc"
+
+			sampler2D _MainTex;
+			float4 _MainTex_ST;
+			half4 _MainTex_TexelSize;
+			float _EdgeOnly;
+			fixed4 _EdgeColor;
+			fixed4 _BackgroundColor;
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				half2 uv[9]:TEXCOORD0;
+			};
+
+			v2f vert(appdata_img v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				half2 uv=v.texcoord;
+				//中线像素点及周围8个像素点的UV坐标
+				o.uv[0]=uv+_MainTex_TexelSize.xy*half2(-1,-1);
+				o.uv[1]=uv+_MainTex_TexelSize.xy*half2(0,-1);
+				o.uv[2]=uv+_MainTex_TexelSize.xy*half2(1,-1);
+				o.uv[3]=uv+_MainTex_TexelSize.xy*half2(-1,0);
+				o.uv[4]=uv+_MainTex_TexelSize.xy*half2(0,0);
+				o.uv[5]=uv+_MainTex_TexelSize.xy*half2(1,0);
+				o.uv[6]=uv+_MainTex_TexelSize.xy*half2(-1,1);
+				o.uv[7]=uv+_MainTex_TexelSize.xy*half2(0,1);
+				o.uv[8]=uv+_MainTex_TexelSize.xy*half2(1,1);
+			
+				return o;
+			}
+
+			fixed luminance(fixed4 color){
+				return color.r*0.2125+color.g*0.7154+color.b*0.0721;
+			}
+			half Sobel(v2f i){
+				const half Gx[9]={-1,-2,-1,
+											0,0,0,
+											1,2,1};
+				const half Gy[9]={-1,0,1,
+											-2,0,2,
+											-1,0,1};
+				half texColor;
+				half edgeX;
+				half edgeY;
+				for(int it=0;it<9;it++){
+					texColor=luminance(tex2D(_MainTex,i.uv[it]));
+					edgeX+=texColor*Gx[it];
+					edgeY+=texColor*Gy[it];
+				}
+				half edge=1-abs(edgeX)-abs(edgeY);
+
+				return edge;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				half edge=Sobel(i);
+
+				fixed4 withEdgeColor=lerp(_EdgeColor,tex2D(_MainTex,i.uv[4]),edge);
+				fixed4 withBackGroundColor=lerp(_EdgeColor,_BackgroundColor,edge);
+				//非边缘的像素点withEdgeColor插值结果靠近原有颜色
+				//而withBackGroundColor的插值结果就靠近给定的背景色
+				return lerp(withEdgeColor,withBackGroundColor,_EdgeOnly);
+				//最后的返回结果，通过_EdgeOnly来混合，
+				//来控制处理后的图像非边缘的颜色是靠近原颜色还是给定的背景色
+			}
+			ENDCG
+		}
+	}
+	FallBack Off
+	}   
+实例效果：    
+![](https://i.imgur.com/GePR5mV.png)       
+![](https://i.imgur.com/xarceQh.png)      
+
+
+**高斯模糊**         
+模糊实现的方式有多种，有均值模糊，中值模糊。均值模糊也会使用图像卷积操作，使用的卷积核的各个元素值都相等，相加的和为1，卷积后得到的像素值是周围像素值的平均值。而中值模糊是选择周围领域内的像素值并对其排序后选择中间值作为返回结果替换原来的颜色。     
+高斯模糊是通过使用高斯核对周围像素进行计算，高斯核中的元素值并不是相等的而是满足正态分布，基于高斯方程，并且元素值进行归一化操作，使每个权重值除以所有的权重值的和，即所有的权重值相加的和为1，这样处理后的图像不会变暗。关于高斯核，这里有一篇详细介绍的博客[http://www.cnblogs.com/zxj015/archive/2013/05/12/3074612.html](http://www.cnblogs.com/zxj015/archive/2013/05/12/3074612.html)             
+高斯核的维数越高，处理后的图像没模糊程度会越高。当使用一个NxN的高斯核对一个WxH的图像进行处理，那么对像素值的采样结果为NxNxWxH次，N越大采样的次数就越大。二维的高斯核可以拆成两个一维的高斯核，得到的结果和直接使用二维高斯核的结果是一样的，这样可以使采样次数降低到2xNxWxH次。而两个一维的高斯核中权重值有重复的权重值，例如一个5x5的一维高斯核只需要记录三个权重值。     
+![](https://i.imgur.com/9Ebuc5Y.png)         
+后续将使用该高斯核实现模糊效果，实现过程中将会使用两个Pass，第一个使用竖直方向的高斯核对图像进行处理，第二个使用水平方向的高斯核对图像进行处理。同时会增加降采样及应用次数（迭代次数）控制模糊程度。           
+
+完整代码：     
+
+	public class GaussianBlur : PostEffectsBase
+	{
+    public Shader gaussianBlurShader;
+    private Material gaussianBlurMaterial = null;
+
+    public Material material
+    {
+        get
+        {
+            gaussianBlurMaterial = CheckShaderAndCreateMaterial(gaussianBlurShader, gaussianBlurMaterial);
+            return gaussianBlurMaterial;
+        }
+    }
+
+    [Range(0, 4)]   //迭代次数，值越大，模糊应用次数越高
+    public int iterations = 3;
+    [Range(0.2f, 3.0f)] //模糊计算的范围，越大越模糊    
+    public float blurSpread = 0.6f;
+    [Range(1, 8)] //降采样数值，越大，计算的像素点越少，节约性能，但是降采样的之太大会出现像素化风格
+    public int downSample = 2;
+
+    void OnRenderImage(RenderTexture src,RenderTexture dest)
+    {
+        //最简单的处理
+        //if (material != null)
+        //{
+        //    int rtW = src.width;
+        //    int rtH = src.height;
+        //    RenderTexture buffer = RenderTexture.GetTemporary(rtW, rtH, 0);
+        //    //使用RenderTexture.GetTemporary()函数分配一块与屏幕图像大小相同的缓冲区
+        //    //由于高斯模糊需要使用两个Pass，而第一个Pass的结果就放在这个缓冲区内保存
+        //    Graphics.Blit(src, buffer, material, 0);
+        //    Graphics.Blit(buffer, dest, material, 1);
+
+        //    RenderTexture.ReleaseTemporary(buffer);
+        //}
+        //else
+        //{
+        //    Graphics.Blit(src,dest);
+        //}  
+
+        //增加降采样的处理
+        //if (material != null)
+        //{
+        //    int rtW = src.width/downSample;
+        //    int rtH = src.height/downSample;
+        //    //增加降采样 
+        //    RenderTexture buffer = RenderTexture.GetTemporary(rtW, rtH, 0);
+
+        //    Graphics.Blit(src, buffer, material, 0);
+        //    Graphics.Blit(buffer, dest, material, 1);
+
+        //    RenderTexture.ReleaseTemporary(buffer);
+        //}
+        //else
+        //{
+        //    Graphics.Blit(src,dest);
+        //}
+
+
+        //增加降采样处理及迭代的影响
+        if (material != null)
+        {
+            int rtW = src.width/downSample;
+            int rtH = src.height/downSample;
+            RenderTexture buffer0 = RenderTexture.GetTemporary(rtW, rtH, 0);
+            buffer0.filterMode = FilterMode.Bilinear;
+
+            Graphics.Blit(src, buffer0);
+            for (int i = 0; i < iterations; i++)
+            {
+                material.SetFloat("_BlurSize", 1.0f + i*blurSpread);
+                //_BlurSize用来控制采样的距离，在n次迭代下，每次迭代会计算向外一圈的采样结果，
+                //再进行高斯核的横向和纵向的计算，结果也就会更加模糊
+                RenderTexture buffer1 = RenderTexture.GetTemporary(rtW, rtH, 0);
+                Graphics.Blit(buffer0, buffer1, material, 0);
+                RenderTexture.ReleaseTemporary(buffer0);
+                buffer0 = buffer1;
+                buffer1 = RenderTexture.GetTemporary(rtW, rtH, 0);
+                Graphics.Blit(buffer0, buffer1, material, 1);
+                RenderTexture.ReleaseTemporary(buffer0);
+                buffer0 = buffer1;
+
+            }
+            Graphics.Blit(buffer0, dest);
+            RenderTexture.ReleaseTemporary(buffer0);
+        }
+        else
+        {
+            Graphics.Blit(src,dest);
+        }
+    }
+	}
+
+Shader部分：     
+
+	Shader "Custom/Chapter12_GaussianBlur" {
+	Properties {
+		_MainTex("MaintTex",2D)="white"{}
+		_BlurSize("BlurSize",Float)=1.0
+	}
+	SubShader {
 
 		
+		CGINCLUDE          //使用时，在Pass中直接指定需要使用的着色器函数，避免编写完一样的片元着色器函数
+			
+		#include "UnityCG.cginc"
+
+		sampler2D _MainTex;
+		half4 _MainTex_TexelSize;
+		float _BlurSize;
+
+		struct v2f{
+			float4 pos:SV_POSITION;
+			half2 uv[5]:TEXCOORD0;
+		};
+		
+		v2f vertBlurVertical(appdata_img v){
+			v2f o;
+			o.pos=UnityObjectToClipPos(v.vertex);
+			half2 uv=v.texcoord;
+			o.uv[0]=uv;
+			o.uv[1]=uv+float2(0.0,_MainTex_TexelSize.y*1.0)*_BlurSize;
+			o.uv[2]=uv+float2(0.0,_MainTex_TexelSize.y*2.0)*_BlurSize;
+			o.uv[3]=uv-float2(0.0,_MainTex_TexelSize.y*1.0)*_BlurSize;
+			o.uv[4]=uv-float2(0.0,_MainTex_TexelSize.y*2.0)*_BlurSize;
+
+			return o;
+		}
+
+		v2f vertBlurHorizantal(appdata_img v){
+			v2f o;
+			o.pos=UnityObjectToClipPos(v.vertex);
+			half2 uv=v.texcoord;
+			o.uv[0]=uv;
+			o.uv[1]=uv+float2(_MainTex_TexelSize.x*1.0,0.0)*_BlurSize;
+			o.uv[2]=uv+float2(_MainTex_TexelSize.x*2.0,0.0)*_BlurSize;
+			o.uv[3]=uv-float2(_MainTex_TexelSize.x*1.0,0.0)*_BlurSize;
+			o.uv[4]=uv-float2(_MainTex_TexelSize.x*2.0,0.0)*_BlurSize;
+
+			return o;
+		}
+
+		fixed4 frag(v2f i):SV_Target{
+			float weight[3]={0.4026,0.2442,0.0545};  
+			fixed3 sum=tex2D(_MainTex,i.uv[0]).rgb*weight[0]; 
+
+			for(int it=1;it<3;it++){
+				sum+=tex2D(_MainTex,i.uv[it])*weight[it];
+				sum+=tex2D(_MainTex,i.uv[it+2])*weight[it];
+			}
+
+			return fixed4(sum,1.0);
+		}
+		ENDCG
+
+		ZTest Always
+		ZWrite Off
+		Cull Off   
+
+		Pass{
+			NAME "GAUSSIAN_BLUR_VERTICAL"
+			CGPROGRAM
+				#pragma vertex vertBlurVertical
+				#pragma fragment frag	
+			ENDCG
+		}
+
+		Pass{
+			NAME "GAUSSIAN_BLUR_HORIZANTAL"
+			CGPROGRAM
+				#pragma vertex vertBlurHorizantal
+				#pragma fragment frag	
+			ENDCG
+		}
+	}
+	FallBack Off
+	}
+
+实例效果：     
+原图：     
+![](https://i.imgur.com/PsP1maV.png)       
+模糊效果：      
+![](https://i.imgur.com/YgfGPbo.png)    
+参数设置     
+![](https://i.imgur.com/XSuarq3.png)    
+
+
 
 ----------
 ### 相关参考 ###
