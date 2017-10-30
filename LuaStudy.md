@@ -898,6 +898,98 @@ if语句
 		--i am Lua
 		-- -10
 
+		--得到协同程序的返回值
+		co3=coroutine.create(
+		function(a,b)
+			print(a+b)
+			print(a-b)
+			coroutine.yield()
+			return a+b
+		end
+	)
+	
+	res,res1=coroutine.resume(co3,5,10)
+	print(res,res1)
+	--输出 true nil
+	--协同函数返回的第一个值为true/false表示该协同函数是否成功启动，
+	--第二个输出为 nil 是由于还未执行到 return 函数就被挂起了
+	res3,res4=coroutine.resume(co3)
+	print(res3,res4)
+	--输出true 15
+	--再次启动后，得到返回值15
+
+	--也可将返回值放入 yiled() 内作为参数传递出来，这样在挂起时，外部也能收到返回值
+	co4=coroutine.create(
+		function(a,b)
+			print(a+b)
+			print(a-b)
+			coroutine.yield(a*b)
+			return a/b
+		end
+	)
+	res5,res6=coroutine.resume(co4,7,8)
+	print(res5,res6)
+	--输出true  56
+
+	--协程状态的获取和内存地址的获取(coroutine.status(),coroutine.running)
+	co3=coroutine.create(
+	function(a,b)
+		print(a+b)
+		print(a-b)
+		print(coroutine.status(co3)) --输出running
+		print(coroutine.running())   --输出thread: 009E9BA0  (协程的内存地址)
+		coroutine.yield()
+		return a+b
+	end
+	)
+	print(coroutine.status(co3))    --输出suspended
+	res,res1=coroutine.resume(co3,5,10)
+	print(coroutine.status(co3))    --输出suspended
+	print(res,res1)
+	--输出 true nil
+	--协同函数返回的第一个值为true/false表示该协同函数是否成功启动，
+	--第二个输出为 nil 是由于还未执行到 return 函数就被挂起了
+	res3,res4=coroutine.resume(co3)
+	print(coroutine.status(co3))    --输出dead
+	print(res3,res4)
+
+文件操作     
+
+	--[[
+	文件操作
+	--]]
+
+	--简单模式下的文件读取
+	file=io.open("data.txt","r")    --传递的参数("文件名或路径"，“对文件的模式”)
+	io.input(file)                  --将文件放入处理池内
+
+	print(io.read())                --读取池内的函数，单行读取
+	print(io.read())                --单行读取
+
+	io.close(file)                  --文件操作完成后关闭，解除占用  
+
+	--完全模式下的文件操作
+	--当在同一时间下处理多个文件时，需要使用file.function_name来代	替io.function_name方法
+	file=io.open("data.txt","r")
+	print(file:read())
+	print(file:read())
+	file:close()
+
+	file2=io.open("data.txt","a")
+	file2:write("武汉2017年平均月工资 6992")
+	file2:close()   
+
+垃圾回收   
+
+	--[[
+	垃圾回收
+	--]]
+	mytable = {"apple", "orange", "banana"}
+	print(collectgarbage("count"))
+	mytable = nil
+	print(collectgarbage("count"))
+	print(collectgarbage("collect"))
+	print(collectgarbage("count"))
 
 ----------
 参考资料：    
