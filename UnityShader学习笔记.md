@@ -2924,7 +2924,7 @@ Unity Shader中可以使用GrabPass完成对屏幕图像的抓取。定义GrabPa
 ![](https://i.imgur.com/TpiPGkO.png)      
 pos是顶点在裁剪空间的坐标，_ProjectionParams.X默认情况下为1，针对不同平台可能会做翻转处理，实际上得到的结果：     
 ![](https://i.imgur.com/RV9eAZk.png)     
-也就是说，**此时得到的坐标并不是最终屏幕图像上的坐标**，因此在片元着色器中在对抓取的屏幕图像取样时，会有 除以w分量的操作
+也就是说，**此时得到的坐标并不是最终屏幕图像上的坐标**，因此在片元着色器中在对抓取的屏幕图像（实际上是对这一张纹理进行取样）取样时，会有 除以w分量的操作（得到[0-1]的UV纹理坐标）
 		
 	tex2D(_RefractionTex,i.scrPos.xy/i.scrPos.w)
 
@@ -3786,7 +3786,7 @@ Unity中实现屏幕后处理出效果，通常步骤：
     public int iterations = 3;
     [Range(0.2f, 3.0f)] //模糊计算的范围，越大越模糊    
     public float blurSpread = 0.6f;
-    [Range(1, 8)] //降采样数值，越大，计算的像素点越少，节约性能，但是降采样的之太大会出现像素化风格
+    [Range(1, 8)] //降采样数值，越大，计算的像素点越少，节约性能，但是降采样的值太大会出现像素化风格
     public int downSample = 2;
 
     void OnRenderImage(RenderTexture src,RenderTexture dest)
@@ -3866,7 +3866,7 @@ Shader部分：
 
 	Shader "Custom/Chapter12_GaussianBlur" {
 	Properties {
-		_MainTex("MaintTex",2D)="white"{}
+		_MainTex("MainTex",2D)="white"{}
 		_BlurSize("BlurSize",Float)=1.0
 	}
 	SubShader {
@@ -3954,6 +3954,340 @@ Shader部分：
 ![](https://i.imgur.com/YgfGPbo.png)    
 参数设置     
 ![](https://i.imgur.com/XSuarq3.png)    
+
+**Bloom效果**       
+Bloom特效在游戏中应用比较常见，可以模拟真实摄像机的一种图像效果，使画面中较亮的区域“扩散”到周围的区域，造成朦胧的效果。    
+Bloom实现原理：       
+先根据一定的阈值提取图像中较亮的区域，并存储到一张渲染纹理中，然后对该渲染纹理做模糊处理，最后再将该渲染纹理与原纹理进行混合。    
+完整代码：    
+
+	public class Bloom : PostEffectsBase {
+    public Shader bloomShader;
+    private Material bloomMaterial;
+    public Material material {
+        get { bloomMaterial = CheckShaderAndCreateMaterial(bloomShader, bloomMaterial);
+            return bloomMaterial;
+        }
+    }
+
+    [Range(0, 4)]
+    public int iterations = 3;
+    [Range(0.2f, 3.0f)]
+    public float blurSpread = 0.6f;
+    [Range(1, 8)]
+    public int downSample = 2;
+    [Range(0.0f, 4.0f)]
+    public float luminanceThreshold = 0.6f;
+
+    void OnRenderImage(RenderTexture src, RenderTexture dest) {
+        if (material != null)
+        {
+            material.SetFloat("_LuminanceThreshold", luminanceThreshold);
+
+            int rtW = src.width / downSample;
+            int rtH = src.height / downSample;
+
+            RenderTexture buffer0 = RenderTexture.GetTemporary(rtW, rtH, 0);
+            buffer0.filterMode=FilterMode.Bilinear;
+            Graphics.Blit(src, buffer0, material, 0);
+
+            for (int it = 0; it < iterations; it++)
+            {
+                material.SetFloat("_BlurSize", 1.0f + it * blurSpread);
+                RenderTexture buffer1 = RenderTexture.GetTemporary(rtW, rtH, 0);
+                Graphics.Blit(buffer0, buffer1, material, 1);
+                RenderTexture.ReleaseTemporary(buffer0);
+                buffer0 = buffer1;
+                buffer1 = RenderTexture.GetTemporary(rtW, rtH, 0);
+                Graphics.Blit(buffer0, buffer1, material, 2);
+                RenderTexture.ReleaseTemporary(buffer0);
+                buffer0 = buffer1;
+            }
+            material.SetTexture("_BloomTex", buffer0);
+            Graphics.Blit(src, dest, material, 3);
+            RenderTexture.ReleaseTemporary(buffer0);
+        }
+        else {
+            Graphics.Blit(src,dest);
+        }
+    }
+	}   
+Shader部分：   
+
+	Shader "Custom/Chapter12_Bloom" {
+	Properties{
+		_MainTex("MainTex",2D)="white"{}
+		_BloomTex("BloomTex",2D)="white"{}
+		_LuminanceThreshold("LuminanceThreshold",Float)=0.5
+		_BlurSize("BlurSize",Float)=1.0
+	}
+	SubShader{
+		CGINCLUDE
+		#include "UnityCG.cginc"
+		sampler2D _MainTex;
+		float4 _MainTex_TexelSize;
+		sampler2D _BloomTex;
+		float _LuminanceThreshold;
+		float _BlurSize;
+
+		struct v2f{
+			float4 pos:SV_POSITION;
+			half2 uv:TEXCOORD0;
+		};
+
+		v2f vertExtractBright(appdata_img v){
+			v2f o;
+			o.pos=UnityObjectToClipPos(v.vertex);
+			o.uv=v.texcoord;
+			return o;
+		}
+
+		fixed luminance(fixed4 color){
+			return 0.2125*color.r+0.7154*color.g+0.0721*color.b;
+		}
+		fixed4 fragExtractBright(v2f i):SV_Target{
+			fixed4 c=tex2D(_MainTex,i.uv);
+			fixed val=clamp(luminance(c)-_LuminanceThreshold,0.0,1.0);  
+
+			return c*val;
+		}
+
+		struct v2fBloom{
+			float4 pos:SV_POSITION;
+			half4 uv:TEXCOORD0;
+		};
+		v2fBloom vertBloom(appdata_img v){
+			v2fBloom o;
+			o.pos=UnityObjectToClipPos(v.vertex);
+			o.uv.xy=v.texcoord;
+			o.uv.zw=v.texcoord; 
+
+			#if UNITY_UV_STARTS_AT_TOP 
+			if(_MainTex_TexelSize.y<0.0)
+				o.uv.w=1.0-o.uv.w;
+			#endif   
+
+			return o;
+		}
+
+		fixed4 fragBloom(v2fBloom i):SV_Target{
+			return tex2D(_MainTex,i.uv.xy)+tex2D(_BloomTex,i.uv.zw);
+		}
+		ENDCG 
+
+		ZWrite Off 
+		ZTest Always
+		Cull Off
+		Pass{
+			CGPROGRAM
+				#pragma vertex vertExtractBright
+				#pragma fragment fragExtractBright
+			ENDCG
+		}
+		UsePass "Custom/Chapter12_GaussianBlur/GAUSSIAN_BLUR_VERTICAL"
+		UsePass "Custom/Chapter12_GaussianBlur/GAUSSIAN_BLUR_HORIZANTAL"
+		Pass{
+			CGPROGRAM
+				#pragma vertex vertBloom
+				#pragma fragment fragBloom
+			ENDCG
+		}
+	}
+	FallBack Off
+	}  
+实例效果：    
+原图：    
+![](https://i.imgur.com/2rh8HTu.png)      
+Bloom效果：    
+![](https://i.imgur.com/Ubbb7d1.png)         
+参数设置：       
+![](https://i.imgur.com/SU91CB8.png)    
+
+**运动模糊**      
+运动模糊是真实世界中的摄像机的一种效果。如果摄像机在曝光时，场景发生变化，就会产生模糊的画面。计算机产生的图像由于不存在曝光，渲染出来的图像往往是线条清晰，缺少运动模糊。       
+运动模糊的实现有多种方式      
+
+- 利用**积累缓存**混合多张连续图片   
+当物体移动产生多张图片后，取这些图片的平均值作为最后的运动模糊图像。这种方式对性能消耗有较大影响，获取多张帧图像需要在同一帧内多次进行场景渲染。    
+- 使用**速度缓存**      
+这个缓存中存储各个像素的运动速度，使用该值决定模糊的方向和大小。      
+
+这里使用类似第一种方法实现运动模糊，同一帧中不需要对场景渲染多次，而是保存当前结果，然后将当前结果叠加到之前的渲染图像中，产生类似拖尾的运动轨迹视觉效果。  
+实例代码：    
+
+	public class MotionBlur : PostEffectsBase
+	{
+    public Shader motionBlurShader;
+    private Material motionBlurMaterial;
+
+    public Material material
+    {
+        get
+        {
+            motionBlurMaterial = CheckShaderAndCreateMaterial(motionBlurShader, motionBlurMaterial);
+            return motionBlurMaterial;
+        }
+    }  
+
+    //运动模糊在混合图像时使用的模糊参数
+    [Range(0.0f, 0.9f)]
+    public float blurAmount = 0.5f;
+
+    private RenderTexture accumulationTexture;
+
+    //当脚本不运行时，销毁accumulationTure，目的是下一次开始应用运动模糊时重新叠加图像
+    void OnDisable()
+    {
+        DestroyImmediate(accumulationTexture);
+    }
+
+    void OnRenderImage(RenderTexture src,RenderTexture dest)
+    {
+        if (material != null)
+        {
+            if (accumulationTexture == null || accumulationTexture.width != src.width ||
+                accumulationTexture.height != src.height)
+            {
+                DestroyImmediate(accumulationTexture);
+                accumulationTexture = new RenderTexture(src.width, src.height, 0);
+                accumulationTexture.hideFlags = HideFlags.HideAndDontSave;
+                //这里由于自己控制该变量的销毁，因此将hideFlags设置为HideAndDontSave，意味着该变量
+                //不会显示在Hierarchy,也不会保存到场景中
+                Graphics.Blit(src, accumulationTexture);
+            }
+
+            accumulationTexture.MarkRestoreExpected();
+            //这里使用MarkRestoreExpected()方法表明需要进行一个渲染纹理的恢复操作
+            //恢复操作发生在渲染到纹理而该纹理没有被提前清空或销毁的情况下，每次调用OnRenderImage()时需要把当前
+            //的帧图像和accumulationTexture中的图像混合，accumulationTexture不需要提前清空，因为它保存了之前的混合结果  
+
+            material.SetFloat("_BlurAmount", 1.0f - blurAmount);
+            Graphics.Blit(src, accumulationTexture, material);
+            Graphics.Blit(accumulationTexture, dest);
+        }
+        else
+        {
+            Graphics.Blit(src,dest);
+        }
+    }
+	}
+
+Shader代码：   
+
+	Shader "Custom/Chapter12_MotionBlur" {
+	Properties{
+		_MainTex("Maintex",2D)="white"{}
+		_BlurAmount("BlurAmount",Float)=1.0
+	}
+	SubShader{
+		CGINCLUDE
+			#include "UnityCG.cginc"  
+			
+			sampler2D _MainTex;
+			float _BlurAmount;
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				half2 uv:TEXCOORD0;
+			};
+
+			v2f vert(appdata_img v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.uv=v.texcoord;
+
+				return o;
+			}
+
+			//对当前图像进行采样，将其A通道的值设为_BlurAmount,在后续混合时可以使用透明通道进行混合
+			fixed4 fragRGB(v2f i):SV_Target{
+				return fixed4(tex2D(_MainTex,i.uv).rgb,_BlurAmount);
+			}
+
+			//直接返回当前图像的采样结果，维护渲染纹理的透明通道值，不让其受到混合时使用的透明度值的影响
+			half4 fragA(v2f i):SV_Target{
+				return tex2D(_MainTex,i.uv);
+			}		
+		ENDCG
+
+		ZTest Always
+		Cull Off
+		ZWrite Off
+		//这里将RGB和A通道分开，是由于在做混合时，按照_BlurAmount参数值将源图像和目标图像进行混合
+		//而同时不让其纹理受到A通道值的影响，只是用来做混合，不改变其透明度
+			Pass{
+				Blend SrcAlpha OneMinusSrcAlpha
+				ColorMask RGB
+				CGPROGRAM
+					#pragma vertex vert
+					#pragma fragment fragRGB
+				ENDCG
+			}
+			Pass{
+				Blend One Zero
+				ColorMask A
+				CGPROGRAM
+					#pragma vertex vert
+					#pragma fragment fragA
+				ENDCG
+			}
+	}
+	}
+
+实例效果：    
+原场景：   
+![](https://i.imgur.com/BRgy7NT.png)      
+运动模糊效果：      
+![](https://i.imgur.com/JRezmfW.png)     
+
+### 使用深度和法线纹理 ###
+很多时候不仅需要当前屏幕的信息，同时希望得到深度和法线信息。例如在做边缘检测时，是直接根据渲染完后的屏幕图像的RGB值进行计算的，如果某些物体受到阴影的影响，那么检测结果就不一定准确。如果可以直接在深度纹理和法线纹理上进行边缘检测，那么就不会受到场景中的阴影的影响。     
+
+**获取深度和法线纹理**        
+首先深度纹理是一张纹理图，既然是一张纹理图，那么其值的范围是在[0,1]之间的，那么这个值的范围是如何转化得到的呢？             
+这些深度值是经过顶点变化后经过透视除法得到归一化的设备坐标（NDC）后转化得来，一个顶点在经过MVP的矩阵变换后从模型空间变换到投影空间，再经过裁剪，透视除法和屏幕映射最终在屏幕上成像。**这里有一点需要注意的是**，在顶点着色器中，顶点只经历了MVP的矩阵变换，得到的只是投影空间的坐标，其裁剪，透视除法和屏幕映射都是在顶点着色器之后进行的。  
+在得到NDC后，深度值对应顶点坐标的z分量，由于NDC的z分量范围在[-1,1]之间，因此需要通过映射公式使其映射到[0,1]之间：   
+
+	d=Zndc/2+1/2      
+d对应深度纹理中的像素值，Zndc对应NDC坐标中的z分量的值。   
+Unity中的深度纹理可以来自真正的深度缓存，也可以由一个单独的Pass渲染而得。当使用延迟渲染路径时，深度纹理可以通过G-buffer得到。而当无法直接获取深度缓存时，深度纹理和法线纹理是通过单独渲染的Pass得到。这时需要在Shader中**设置正确的RenderType标签**，使物体出现在深度和法线纹理中。      
+
+在Unity中，可以选择让一个摄像机生成一张深度纹理和法线纹理（Unity会通过访问深度缓存或特定的Pass得到），获取深度纹理和法线纹理只需设置对应的摄像机模式，然后再在Shader中访问特定的纹理属性。       
+例如获取深度纹理：       
+
+	camera.depthTextureMode=DepthTextureMode.Depth;
+	//然后在Shader中声明_CameraDepthTexture变量来访问
+获取深度+法线纹理：    
+
+	camera.depthTextureMode=DepthTextureMode.DepthNormals;
+	//然后在Shader中声明_CameraDepthNormalsTexture变量来访问   
+还可以组合这些模式，让一个摄像机同时产生深度和深度+纹理法线纹理：      
+
+	camera.depthTextureMode |= DepthTextureMode.Depth;
+	camera.depthTextureMode |= DepthTextureMode.DepthNormals;      
+	//在Shader中声明对应的变量即可使用          
+
+当在Shader中通过_CameraDepthTexture变量得到深度纹理后，可以使用当前像素的纹理坐标对深度纹理进行采样，大多数情况下直接使用Tex2D()函数采样即可。对于需要特殊处理的平台，Unity提供统一的宏SAMPLE _DEPTH _TEXTURE，用来处理平台差异的问题。在Shader中，使用该宏对深度纹理进行采样，   
+
+	float d=SAMPLE_DEPTH_TEXTURE(_CameraDepthTxeture,i.uv);     
+	//i.uv是对应当前的像素纹理坐标
+类似宏还有SAMPLE _DEPTH _TEXTURE _PROJ和SAMPLE _DEPTH _TEXTURE _LOD，SAMPLE _DEPTH _TEXTURE _PROJ宏接受两个参数，深度纹理和一个float3或float4类型的纹理坐标，内部使用tex2Dproj进行投影纹理采样。SAMPLE _DEPTH _TEXTURE _PROJ的第二个参数通常是由顶点着色器输出的插值而得到的屏幕坐标，比如：      
+
+	float d=SAMPLE_DEPTH_TEXTURE_PROJ(_CameraDepthTexTure,UNITY_PROJ_COORD(i.srcPos));  
+	//i.srcPos是在顶点着色器中通过调用ComputeScreenPos(o.pos)得到的屏幕坐标     
+
+当通过纹理采样得到的深度值后，得到的深度值是非线性的，这是由于观察空间到投影空间的矩阵变换是非线性的。而在计算过程中，需要在线性空间下，因此需要将得到深度值变换到线性空间下，比如观察空间。将深度纹理采样的结果反映射到投影空间，再由投影空间变换到观察空间可以通过顶点变换过程的逆向过程计算出来，Unity提供了辅助函数简便计算过程：      
+
+	LinearEyeDepth();    //负责将深度纹理的采样结果转换到观察空间下     
+	Linear01Depth();   //返回一个范围在[0,1]线性深度值   
+如果需要获取深度+法线纹理，可以直接使用tex2D()对_CameraDepthNormalsTexture进行采样，得到里面存储的深度和法线信息。Unity提供了DecodeDepthNormal函数对采样结果进行解码，从而得到深度值和法线方向。DecodeDepthNormal函数定义：     
+
+	inline void DecodeDepthNormal(float4 enc, out float depth, out float3 normal)
+	{
+		depth=DecodeFloatRG(enc.zw);
+		normal=DecodeViewNormalStereo(enc);
+	}
+经过解码后得到的深度值是范围在[0,1]的**线性深度值**，得到的法线则是观察空间下的法线方向。
 
 
 
