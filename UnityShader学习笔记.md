@@ -4288,7 +4288,92 @@ Unity中的深度纹理可以来自真正的深度缓存，也可以由一个单
 		normal=DecodeViewNormalStereo(enc);
 	}
 经过解码后得到的深度值是范围在[0,1]的**线性深度值**，得到的法线则是观察空间下的法线方向。
+  
+**通过深度纹理实现扫描相交部分着色功能**     
+扫描相交部分着色其实在游戏中很常见，比如非常火的一款游戏      
+![](https://i.imgur.com/Q9i3J0u.jpg)        
+玩过的朋友可能会注意到当开始缩圈的时候，毒圈经过的界面在与树木或建筑物相交处会有一圈物体轮廓的高亮显示，那么这个相交处的高亮显示就是要实现的扫描相交部分着色功能。    
+要想实现这个功能，需要判断扫描平面（也就是那个毒圈）与相交处物体的位置关系，只有足够近，才会有高亮着色效果。再来看这个位置关系，实际上是通过距离摄像机位置的远近来进行判断的。因此可以利用扫描平面当前的深度值和建筑物的深度值进行判断来得到远近关系，建筑物的深度值可以通过已经存在的深度纹理得到，而扫描平面当前的深度值可以通过变换得到。因此这里要确定正确的渲染顺序，即**先渲染场景中的树木和建筑物，最后再渲染扫描平面**    
 
+实例代码：     
+
+	Shader "Custom/Scan" {
+	Properties{
+		_MainColor("MainColor",Color)=(1,1,1,1)
+		_HighLightingColor("HighLightingColor",Color)=(1,1,1,1)
+		_Threshold("Threshold",Float)=2.0
+		_MainTex("MainTex",2D)="white"{}
+	}
+	SubShader{
+		Tags{"Queue"="Transparent" "RenderType"="Transparent"}
+		//设置合理的渲染队列，使当前扫描平面在其他物体后渲染
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+
+			Blend SrcAlpha OneMinusSrcAlpha
+			//设置混合，使得扫描平面后面的部分仍然被看见
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "Lighting.cginc"
+			#include "UnityCG.cginc"
+
+			//提前定义
+			uniform sampler2D_float _CameraDepthTexture;
+
+			 fixed4 _MainColor;
+			 fixed4 _HighLightingColor;
+			 float   _Threshold;
+			 sampler2D  _MainTex;
+			 float4         _MainTex_ST;
+
+			 struct a2v{
+				float4 vertex:POSITION;
+				float4 texcoord:TEXCOORD0;
+			 };
+
+			 struct v2f{
+				float4 pos:SV_POSITION;
+				float4 projPos:TEXCOORD0;
+				float3 viewPos:TEXCOORD1;
+				float2 uv:TEXCOORD2; 
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.projPos=ComputeScreenPos(o.pos);
+				o.viewPos=UnityObjectToViewPos(v.vertex);
+				o.uv=TRANSFORM_TEX(v.texcoord,_MainTex);
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				fixed4 finalColor=_MainColor;
+				float sceneZ=LinearEyeDepth(tex2Dproj(_CameraDepthTexture,UNITY_PROJ_COORD(i.projPos)));
+				//使用LinearEyeDepth得到在观察空间下的深度值，这里需要注意的是Unity的观察空间中，摄像机正向对应着的z值
+				//为负值，而为了得到深度值的正数表示，将原观察空间的深度值这里做了一个取反的操作
+				float partZ=-i.viewPos.z;
+				//因此这里得到当前平面的观察空间深度值后，取了反，与上面得到的结果对应
+				float diff=min((abs(sceneZ-partZ))/_Threshold,1.0);
+				//这里通过两者深度值的插值/阈值控制颜色插值运算的结果，深度值相差太大则是扫描平面自身颜色
+				//而差值越小，则越接近高亮颜色
+				finalColor=lerp(_HighLightingColor,_MainColor,diff)*tex2D(_MainTex,i.uv);
+
+				return finalColor;
+			}
+			ENDCG
+		}
+	}
+	FallBack "Transparent/VertexLit"
+	}  
+
+这里可以注意下设置的渲染队列和混合操作，还有一点需要说明的是，为什么最后计算的时候都是使用的观察空间的深度值，之前提到过，投影矩阵的变换过程是非线性的，因此需要转化到线性空间进行计算，所以这里选择了观察空间。       
+
+实例效果：     
+![](https://i.imgur.com/SRMt7lr.png)         
+参数设置：     
+![](https://i.imgur.com/hO1LvkL.png)     
 
 
 ----------
