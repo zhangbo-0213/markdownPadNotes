@@ -4245,7 +4245,8 @@ Shader代码：
 
 **获取深度和法线纹理**        
 首先深度纹理是一张纹理图，既然是一张纹理图，那么其值的范围是在[0,1]之间的，那么这个值的范围是如何转化得到的呢？             
-这些深度值是经过顶点变化后经过透视除法得到归一化的设备坐标（NDC）后转化得来，一个顶点在经过MVP的矩阵变换后从模型空间变换到投影空间，再经过裁剪，透视除法和屏幕映射最终在屏幕上成像。**这里有一点需要注意的是**，在顶点着色器中，顶点只经历了MVP的矩阵变换，得到的只是投影空间的坐标，其裁剪，透视除法和屏幕映射都是在顶点着色器之后进行的。  
+这些深度值是经过顶点变化后经过透视除法得到归一化的设备坐标（NDC）后转化得来，一个顶点在经过MVP的矩阵变换后从模型空间变换到投影空间，再经过裁剪，透视除法和屏幕映射最终在屏幕上成像。**这里有一点需要注意的是**，在顶点着色器中，顶点只经历了MVP的矩阵变换，得到的只是投影空间的坐标，其裁剪，透视除法和屏幕映射都是在顶点着色器之后进行的。 这里提供一个顶点转换过程及着色器处理的时间轴流程图：     
+![](https://i.imgur.com/9VNt95C.png)   
 在得到NDC后，深度值对应顶点坐标的z分量，由于NDC的z分量范围在[-1,1]之间，因此需要通过映射公式使其映射到[0,1]之间：   
 
 	d=Zndc/2+1/2      
@@ -4373,7 +4374,102 @@ Unity中的深度纹理可以来自真正的深度缓存，也可以由一个单
 实例效果：     
 ![](https://i.imgur.com/SRMt7lr.png)         
 参数设置：     
-![](https://i.imgur.com/hO1LvkL.png)     
+![](https://i.imgur.com/hO1LvkL.png)      
+
+**利用深度纹理实现运动模糊**         
+之前实现的运动模糊是通过混合多张屏幕图像来模拟运动模糊。另一种实现运动模糊的方式是通过速度映射图，而且该方式应用更加广泛。速度映射图中存储每个像素的速度，使用该速度决定模糊的方向和大小。生成速度缓冲可以将场景中所有物体的速度渲染到一张纹理中，不过该方法需要修改场景中所有物体的Shader代码，使其添加计算速度的代码并输出到下一个渲染纹理中。    
+有一种方法是通过深度纹理在片元着色器中为每个像素计算其在世界空间下的位置，该过程是通过当前视角x投影矩阵的逆矩阵对NDC下的顶点坐标进行变换得到。再将该位置与上一帧的视角x投影矩阵运算，得到该位置在上一帧的投影空间中的位置，计算上一帧该位置和当前帧的位置差，生成该像素的速度。这种方法的优点在于在一个屏幕后处理特效中就能完成整个效果模拟，缺点是在片元着色器中需要进行两次矩阵运算，消耗部分性能。 
+  
+完整代码：        
+
+	Shader "Custom/Chapter13_MotionBlurWithDepthTexture" {
+	Properties{
+		_MainTex("Maintex",2D)="white"{}
+		_BlurSize("BlurSize",Float)=1.0
+	}
+	SubShader{
+		CGINCLUDE
+			
+			#include "UnityCG.cginc"
+			sampler2D _MainTex;
+			half4 _MainTex_TexelSize;
+			sampler2D _CameraDepthTexture;
+			float4x4 _PreviousViewProjectionMatrix;
+			float4x4 _CurrentViewProjectionInverseMatrix;
+			half _BlurSize;
+
+			struct v2f{
+				float4 pos:POSITION;
+				half2 uv:TEXCOORD0;
+				half2 uv_depth:TEXCOORD1;
+			};
+
+
+			v2f vert(appdata_img v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.uv=v.texcoord;
+				o.uv_depth=v.texcoord;
+				#if UNITY_UV_STARTS_AT_TOP
+				if(_MainTex_TexelSize.y<0)
+					o.uv_depth.y=1-o.uv_depth.y;
+				#endif
+
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				//得到深度缓冲中该像素点的深度值
+				float d=SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture,i.uv_depth);
+				//得到深度纹理映射前的深度值
+				float4 H=float4(i.uv.x*2-1,i.uv.y*2-1,d*2-1,1);
+				//通过转换矩阵得到顶点的世界空间的坐标值
+				float4 D=mul(_CurrentViewProjectionInverseMatrix,H);
+				float4 worldPos=D/D.w;
+
+				float4 currentPos=H;
+				float4 previousPos=mul(_PreviousViewProjectionMatrix,worldPos);
+				previousPos/=previousPos.w;
+
+				float2 velocity=(currentPos.xy-previousPos.xy)/2.0f;
+
+				float2 uv=i.uv;
+				float4 c=tex2D(_MainTex,uv);
+				//得到像素速度后，对邻域像素进行采样，并使用BlurSize控制采样间隔
+				//得到的像素点进行平均后，得到模糊效果
+				uv+=velocity*_BlurSize;
+				for(int it=1;it<3;it++,uv+=velocity*_BlurSize){
+					float4 currentColor=tex2D(_MainTex,uv);
+					c+=currentColor;
+				}
+				c/=3;
+				return fixed4(c.rgb,1.0);
+			}
+		ENDCG
+
+		Pass{
+			ZTest Always 
+			Cull Off
+			ZWrite Off
+
+			CGPROGRAM
+				#pragma vertex vert
+				#pragma fragment frag
+			ENDCG
+		}
+	}
+
+	FallBack Off
+	}
+实例效果：       
+![](https://i.imgur.com/UlhdEqq.png)       
+可以看到，这里的模糊效果是整个场景图像都有模糊效果，而之前采用帧缓冲图像进行混合所产生的模糊效果在某一方向上是模糊效果，并不是整个场景的图像都有模糊效果。但是如果在一个物体运动，而摄像机静止的场景中不会产生模糊效果，这是由于整个速度计算依赖于摄像机的视角变化。而上一节中实现的运动模糊，只要摄像机视野中物体发生了相对运动都可以产生模糊效果。
+
+**全局雾效**       
+雾效在游戏中是一种常见的特效。比如吃鸡里就有大雾天，Unity内置的雾效可以生成基于距离的线性或指数雾效。如果在顶点/片元着色器实现这样的雾效，需要在Shader中添加#pragma multi _compile _fog指令，同时需要使用相关内置宏，比如 UNITY _FOG _COORDS, UNITY _TRANSFER _FOG, UNITY _APPLY _FOG等。使用这种方法，需要为场景中所有物体添加渲染代码，操作比较繁琐。       
+使用基于屏幕后处理的全局雾效，不需要为场景中所有的物体添加渲染代码，仅通过屏幕后处理就可以实现，而且可以模拟均匀雾效、基于距离的线性/指数雾效，基于高度的雾效。       
+基于屏幕后处理的全局雾效关键在于**通过深度纹理重建每个像素在世界空间的位置** ，在上一节中，通过深度纹理的采样，反映射得到NDC坐标，再通过视角x投影坐标的逆矩阵运算得到世界空间下的位置，这样的实现需要在片元着色器中进行矩阵运算。      
+有一种快速从深度纹理中重建世界坐标的方法。该方法首先对图像空间下的视椎体射线（从摄像机出发，指向图像上的某点）进行插值，这条射线记录了该像素点在世界空间下到摄像机的方向信息。将该射线和线性化后的视角空间下的深度值相乘，加上摄像机的世界位置，得到世界空间下的像素点的位置。
 
 
 ----------
