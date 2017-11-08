@@ -1,5 +1,7 @@
 ## Unity Shader入门学习##
-**学习教材：《UnityShader入门精要》**  
+**学习教材：《UnityShader入门精要》——冯乐乐**  
+**部分计算图例为《UnityShader入门精要》书中截图**  
+**代码和实例截图均为个人实际操作得到**
 
 ----------
 
@@ -4469,7 +4471,263 @@ Unity中的深度纹理可以来自真正的深度缓存，也可以由一个单
 雾效在游戏中是一种常见的特效。比如吃鸡里就有大雾天，Unity内置的雾效可以生成基于距离的线性或指数雾效。如果在顶点/片元着色器实现这样的雾效，需要在Shader中添加#pragma multi _compile _fog指令，同时需要使用相关内置宏，比如 UNITY _FOG _COORDS, UNITY _TRANSFER _FOG, UNITY _APPLY _FOG等。使用这种方法，需要为场景中所有物体添加渲染代码，操作比较繁琐。       
 使用基于屏幕后处理的全局雾效，不需要为场景中所有的物体添加渲染代码，仅通过屏幕后处理就可以实现，而且可以模拟均匀雾效、基于距离的线性/指数雾效，基于高度的雾效。       
 基于屏幕后处理的全局雾效关键在于**通过深度纹理重建每个像素在世界空间的位置** ，在上一节中，通过深度纹理的采样，反映射得到NDC坐标，再通过视角x投影坐标的逆矩阵运算得到世界空间下的位置，这样的实现需要在片元着色器中进行矩阵运算。      
-有一种快速从深度纹理中重建世界坐标的方法。该方法首先对图像空间下的视椎体射线（从摄像机出发，指向图像上的某点）进行插值，这条射线记录了该像素点在世界空间下到摄像机的方向信息。将该射线和线性化后的视角空间下的深度值相乘，加上摄像机的世界位置，得到世界空间下的像素点的位置。
+有一种快速从深度纹理中重建世界坐标的方法。该方法首先对图像空间下的视椎体射线（从摄像机出发，指向图像上的某点）进行插值，这条射线记录了该像素点在世界空间下到摄像机的方向信息。将该射线和线性化后的视角空间下的深度值相乘，加上摄像机的世界位置，得到世界空间下的像素点的位置。得到该位置后，可以使用公式来模拟全局雾效。   
+
+从深度纹理中计算世界坐标        
+像素的世界坐标是通过在世界空间下像素相对于摄像机的偏移量+世界空间下摄像机的位置得到，用代码表示：       
+
+	float4 worldPos=_WorldSpaceCameraPos+linearDepth*interpolatedRay;
+	//_WorldSpaceCameraPos：摄像机世界空间位置坐标，由Unity内置变量即可得到
+	//linearDepth：由深度纹理得到的线性深度值
+	//interpolatedRay：由定点着色器输出插值得到的射线，包含了像素到摄像机的方向和距离信息      
+       
+interpolatedRay计算过程：      
+interpolatedRay是对摄像机的近裁剪平面的四个顶点的特定向量的插值。先来计算这四个顶点的特定向量，包含了顶点到摄像机的距离和方向信息。计算过程中用到的图：       
+![](https://i.imgur.com/KiApblE.png)         
+先计算toTop和toRight向量：     
+
+	halfHeight=Near*tan(FOV/2)       
+	//Near:近裁剪平面距离      FOV:视椎体竖直方向的张角   
+	
+	toTop=camera.up x halfHeight
+ 	toRight=camera.right x halfHeight*aspect     
+	//aspect:横纵比    
+再得到TL、TR、BL、BR四个向量的值：    
+
+	TL=camera.forward*Near+toTop-toRight;
+	TR=camera.forward*Near+toTop+toRight;
+	BL=camera.forward*Near-toTop-toRight;
+	BR=camera.forward*Near-toTop+toRight;   
+以上四个向量得到了关于近裁剪平面四个顶点到摄像机的方向和距离信息，由于采样得到的深度值z是相对与摄像机的垂直距离，因此还不能直接使用上述四个向量的单位向量与深度值相乘来得到该方向上具有深度值的距离，因此需要计算出具有深度值的某点到摄像机的直线距离，以TL点为例，由相似原理：    
+
+	depth/dist=Near/|TL|  
+	dist=depth*(|TL|/Near)    
+由于四点对称，其他三个点都可以使用同一个因子与该方向的单位向量相乘得到能与对应深度值直接相乘的向量    
+
+	scale=|TL|/Near  
+	Ray_TL=TL/|TL|*scale
+	Ray_TR=TR/|TR|*scale
+	Ray_BL=BL/|BL|*scale
+	Ray_BR=BR/|BR|*scale   
+这样得到可以直接与深度值相乘前的特定向量。屏幕后处理使用特定材质渲染一个刚好填充整个屏幕的四边形面片。面片的4个顶点对应近裁剪平面的4个角。将上面的计算结果传递给顶点着色器，再由顶点着色器选择对应的向量，输出传递给片元着色器就得到了经过插值的interpolatedRay，然后计算像素点在世界空间的位置。  
+
+雾的计算      
+简单雾效的计算通过混合因子将雾的颜色与原始颜色混合。     
+
+	float3 afterFog=f*fogColor+(1-f)*originalColor   
+混合因子f有线性、指数和指数平方，给定距离为z：
+
+	//线性 
+	f=(Dmax-|z|)/(Dmax-Dmin)       //Dmax与Dmin为受影响的最大和最小距离 
+	
+	//指数 
+	f=e^-(D*|z|)             //D为控制雾浓度参数
+
+	//指数平方   
+	f=e^-(D*|z|)^2       //D为控制雾效浓度参数        
+可以采用线性雾效计算方式，计算基于高度的雾效：    
+	
+	f=(H_end-y)/(H_end-H_start)      //H_end和H_start为高度起始位置      
+
+实例代码：     
+
+	public class Chapter13_FogWithDepthTexture :PostEffectsBase
+	{
+
+    public Shader fogWithDepthShader;
+    private Material fogMaterial;
+
+    public Material material
+    {
+        get
+        {
+            fogMaterial = CheckShaderAndCreateMaterial(fogWithDepthShader, fogMaterial);
+            return fogMaterial;
+        }
+    }
+
+    private Camera myCamera;
+    public Camera camera
+    {
+        get
+        {
+            if (myCamera == null)
+                myCamera = GetComponent<Camera>();
+            return myCamera;
+        }
+    }
+
+    private Transform myTransform;
+
+    public Transform cameraTransform
+    {
+        get
+        {
+            if (myTransform == null)
+                myTransform = camera.transform;
+            return myTransform;
+        }
+    }
+
+    //定义模拟雾效的参数
+    [Range(0.0f, 3.0f)]
+    public float fogDensity = 1.0f;
+
+    public Color fogColor = Color.white;
+    public float fogStart = 0.0f;
+    public float fogEnd = 2.0f;
+
+    void OnEnable()
+    {
+        camera.depthTextureMode |=DepthTextureMode.Depth;
+    }
+
+    void OnRenderImage(RenderTexture src,RenderTexture dest)
+    {
+        if (material != null)
+        {
+            Matrix4x4 frustumCorners = Matrix4x4.identity;
+
+            float fov = camera.fieldOfView;
+            float near = camera.nearClipPlane;
+            float far = camera.farClipPlane;
+            float aspect = camera.aspect;
+
+            float halfHeight = near*Mathf.Tan(fov*0.5f*Mathf.Deg2Rad);
+            Vector3 toTop = cameraTransform.up*halfHeight;
+            Vector3 toRight = cameraTransform.right*halfHeight*aspect;
+
+            Vector3 topLeft = cameraTransform.forward*near + toTop - toRight;
+            float scale = topLeft.magnitude/near;
+            topLeft.Normalize();
+            topLeft *= scale;
+
+            Vector3 topRight = cameraTransform.forward*near + toTop + toRight;
+            topRight.Normalize();
+            topRight *= scale;
+
+            Vector3 bottomLeft = cameraTransform.forward*near - toTop - toRight;
+            bottomLeft.Normalize();
+            bottomLeft *= scale;
+
+            Vector3 bottomRight = cameraTransform.forward*near - toTop + toRight;
+            bottomRight.Normalize();
+            bottomRight *= scale;
+
+            frustumCorners.SetRow(0, bottomLeft);
+            frustumCorners.SetRow(1, bottomRight);
+            frustumCorners.SetRow(2, topRight);
+            frustumCorners.SetRow(3, topLeft);
+
+            material.SetMatrix("_FrustumCornerRay", frustumCorners);
+          
+            material.SetFloat("_FogDensity", fogDensity);
+            material.SetColor("_FogColor", fogColor);
+            material.SetFloat("_FogStart", fogStart);
+            material.SetFloat("_FogEnd", fogEnd);
+
+            Graphics.Blit(src, dest, material);
+        }
+        else
+        {
+            Graphics.Blit(src,dest);
+        }
+    }
+	}
+
+Shader代码：       
+
+	Shader "Custom/Chapter13_FogWithDepthTexture" {
+	Properties{
+		_MainTex("MainTex",2D)="white"{}
+		_FogDensity("Fog Density",Float)=1.0
+		_FogColor("FogColor",Color)=(1,1,1,1)
+		_FogStart("Fog Start",Float)=0.0
+		_FogEnd("FogEnd",Float)=2.0
+	}
+	SubShader{
+		CGINCLUDE
+			#include "UnityCG.cginc"
+
+			sampler2D _MainTex;
+			half4 _MainTex_TexelSize;
+			sampler2D _CameraDepthTexture;
+			half _FogDensity;
+			fixed4 _FogColor;
+			float _FogStart;
+			float _FogEnd;  
+
+			float4x4 _FrustumCornerRay;
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				half2 uv:TEXCOORD0;
+				half2 uv_depth:TEXCOORD1;
+				float4 interpolatedRay:TEXCOORD2;
+			};
+
+			v2f vert(appdata_img v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.uv=v.texcoord;
+				o.uv_depth=v.texcoord;   
+				#if UNITY_UV_STARTS_AT_TOP
+				if(_MainTex_TexelSize.y<0)
+					o.uv_depth.y=1-o.uv_depth.y;
+				#endif
+
+				int index=0;
+				if(v.texcoord.x<0.5&&v.texcoord.y<0.5){
+					index=0;
+				}
+				else if(v.texcoord.x>0.5&&v.texcoord.y<0.5){
+					index=1;
+				}
+				if(v.texcoord.x>0.5&&v.texcoord.y>0.5){
+					index=2;
+				}
+				else{
+					index=3;
+				}
+				#if UNITY_UV_STARTS_AT_TOP
+				if(_MainTex_TexelSize.y<0){
+					index=3-index;
+				}
+				#endif
+				o.interpolatedRay=_FrustumCornerRay[index];
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				float linearDepth=LinearEyeDepth(SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture,i.uv_depth));
+				float3 worldPos=_WorldSpaceCameraPos+linearDepth*i.interpolatedRay.xyz;
+
+				float fogDensity=(_FogEnd-worldPos.y)/(_FogEnd-_FogStart);
+				fogDensity=saturate(fogDensity*_FogDensity);
+
+				fixed4 finalColor=tex2D(_MainTex,i.uv);
+				finalColor.rgb=lerp(finalColor.rgb,_FogColor.rgb,fogDensity);
+				return finalColor;
+			}
+		ENDCG
+
+		Pass{
+			ZTest Always ZWrite Off Cull Off
+			
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			ENDCG
+		}
+	}
+	FallBack Off
+	}
+实例效果：     
+![](https://i.imgur.com/urcxVzw.png)        
+参数设置：     
+![](https://i.imgur.com/7THQMrx.png)       
+实例效果中可以看到，在没有游戏对象的区域是不会产生雾效的，这是因为计算的基础是深度纹理，如果场景中为空，那么不会产生深度值，所以不会有雾效效果。
+
 
 
 ----------
