@@ -4738,7 +4738,172 @@ Shader代码：
 **利用深度纹理实现边缘检测**        
 前面的章节中通过边缘检测算子（Sobel算子）实现了对屏幕图像进行边缘检测，进行描边效果。但是当产生的屏幕图像中的物体具有色彩丰富的纹理和阴影时，这种基于颜色的描边效果会使纹理和阴影也出现描边效果，比如        
 ![](https://i.imgur.com/mFNPQEV.png)           
-这样物体的纹理和阴影也会被描上黑边，给人一种很脏的感觉。由于深度纹理仅仅保存了当前渲染物体的魔性信息，如果在深度纹理上进行描边效果则会更加可靠和干净。
+这样物体的纹理和阴影也会被描上黑边，给人一种很脏的感觉。由于深度纹理仅仅保存了当前渲染物体的魔性信息，如果在深度纹理上进行描边效果则会更加可靠和干净。   
+之前使用的是Sobel算子进行边缘检测，下面要实现的效果采用Roberts算子，该算子的卷积核：         
+![](https://i.imgur.com/wkXW76K.png)       
+该算子计算对角的差值，然后再将结果相乘来作为判断是否存在边界的判定依据。实现过程中也采用该判断方式。    
+代码实例：     
+	
+	public class Chapter13_EdgeDetectNormalsAndDepth : PostEffectsBase
+	{
+    public Shader edgeDetectShader;
+    private Material edgeDetectMaterial;
+
+    public Material material
+    {
+        get
+        {
+            edgeDetectMaterial = CheckShaderAndCreateMaterial(edgeDetectShader, edgeDetectMaterial);
+            return edgeDetectMaterial;
+        }
+    }
+
+    [Range(0.0f, 1.0f)]
+    public float edgeOnly = 0.0f;
+
+    public Color edgeColor = Color.black;
+    public Color backgroundColor = Color.white;
+
+    //用于控制深度和法线纹理的采样距离，值越大，描边越宽
+    public float sampleDistance = 1.0f;
+    //灵敏值，影响领域的深度值或法线值相差多少时，会被认为存在一条边界
+    public float sensitivityDepth = 1.0f;
+    public float sensitivityNormals = 1.0f;
+
+    void OnEnable()
+    {
+        GetComponent<Camera>().depthTextureMode |=DepthTextureMode.DepthNormals;
+    }
+
+    //默认情况下，OnRenderImage()会在所有的不透明和透明Pass执行完成后调用，以便对所有物体都产生影响
+    //当希望在不透明物体的Pass完成后立即调用，不对透明物体产生影响，可以添加[ImageEffectOpaque]特性实现
+    [ImageEffectOpaque]
+    void OnRenderImage(RenderTexture src,RenderTexture dest)
+    {
+        if (material != null)
+        {
+            material.SetFloat("_EdgeOnly",edgeOnly);
+            material.SetColor("_EdgeColor",edgeColor);
+            material.SetColor("_BackgroundColor",backgroundColor);
+            material.SetFloat("_SampleDistance",sampleDistance);
+            material.SetVector("_Sensitivity",new Vector4(sensitivityNormals,sensitivityDepth,0.0f,0.0f));
+
+            Graphics.Blit(src,dest,material);
+        }
+        else
+        {
+            Graphics.Blit(src,dest);
+        }
+    }
+	}       
+Shader代码：       
+
+	Shader "Custom/Chapter13_EdgeDetectWithNormalsAndDepth" {
+	Properties{
+		_MainTex("MainTex",2D)="white"{}
+		_EdgeOnly("EdgeOnly",Float)=1.0
+		_EdgeColor("EdgeColor",Color)=(0,0,0,1)
+		_BackgroundColor("BackgroundColor",Color)=(1,1,1,1)
+		_SampleDistance("SampleDistance",Float)=1.0
+		_Sensitivity("Sensitivity",Vector)=(1,1,1,1)
+	}
+	SubShader{
+		CGINCLUDE
+		#include "UnityCG.cginc"
+		
+		sampler2D _MainTex;
+		half4 _MainTex_TexelSize;
+		fixed _EdgeOnly;
+		fixed4 _EdgeColor;
+		fixed4 _BackgroundColor;
+		float _SampleDistance;
+		half4 _Sensitivity;
+		sampler2D _CameraDepthNormalsTexture;
+		
+		struct v2f{
+			float4 pos:SV_POSITION;
+			half2 uv[5]:TEXCOORD0;
+		};		
+
+		v2f vert(appdata_img v){
+			v2f o;
+			o.pos=UnityObjectToClipPos(v.vertex);
+			half2 uv=v.texcoord;
+			o.uv[0]=uv;
+
+			#if UNITY_UV_STARTS_AT_TOP	
+			if(_MainTex_TexelSize.y<0)
+			uv.y=1-uv.y;
+			#endif
+
+			o.uv[1]=uv+_MainTex_TexelSize.xy*half2(1,1)*_SampleDistance;
+			o.uv[2]=uv+_MainTex_TexelSize.xy*half2(-1,-1)*_SampleDistance;
+			o.uv[3]=uv+_MainTex_TexelSize.xy*half2(-1,1)*_SampleDistance;
+			o.uv[4]=uv+_MainTex_TexelSize.xy*half2(1,-1)*_SampleDistance;
+
+			return o;
+		}
+
+		//检测给定的采样点之间是否存在一条分界线
+		half CheckSame(half4 center,half4 sample){
+			half2 centerNormal=center.xy;
+			float centerDepth=DecodeFloatRG(center.zw);
+			half2 sampleNormal=sample.xy;
+			float sampleDepth=DecodeFloatRG(sample.zw);
+
+			//检测两者法线值的差异，如果两者法线值足够接近，那么说明不存在分界线
+			//法线值并没有进行解码，因为只需要知道两者的差异，不需要准确的解码值
+			half2 diffNormal=abs(centerNormal-sampleNormal)*_Sensitivity.x;
+			int isSameNormal=(diffNormal.x+diffNormal.y)<0.1;  
+
+			//检测两者深度值值的差异，如果两者深度值足够接近，那么说明不存在分界线
+			float diffDepth=abs(centerDepth-sampleDepth)*_Sensitivity.y;
+			int isSameDepth=diffDepth<0.1*centerDepth;
+
+			//只有两者的法线和深度值差异均在阈值范围内，才可以看做是不存在分界线
+			return isSameNormal*isSameDepth?1.0:0.0;
+		}
+
+		fixed4 fragRobertsCrossDepthAndNormal(v2f i):SV_Target{
+			//根据Roberts算子对深度法线图对应像素的周围像素采样
+			half4 sample1=tex2D(_CameraDepthNormalsTexture,i.uv[1]);
+			half4 sample2=tex2D(_CameraDepthNormalsTexture,i.uv[2]);
+			half4 sample3=tex2D(_CameraDepthNormalsTexture,i.uv[3]);
+			half4 sample4=tex2D(_CameraDepthNormalsTexture,i.uv[4]);
+
+			half edge=1.0;
+			edge*=CheckSame(sample1,sample2);
+			edge*=CheckSame(sample3,sample4);
+
+			//通过计算得到edge，设置非边界像素的颜色为原色还是背景色的着色方案
+			fixed4 withEdgeColor=lerp(_EdgeColor,tex2D(_MainTex,i.uv[0]),edge);
+			fixed4 withBackgroundColor=lerp(_EdgeColor,_BackgroundColor,edge);
+			//使用_EdgeOnly控制非边界像素的颜色混合结果
+			return lerp(withBackgroundColor,withEdgeColor,_EdgeOnly);
+		}
+		ENDCG
+		Pass{
+		ZTest Always ZWrite Off Cull Off
+
+		CGPROGRAM
+		#pragma vertex vert
+		#pragma fragment fragRobertsCrossDepthAndNormal
+		ENDCG
+		}
+	}
+	FallBack Off
+	}     
+原图效果：       
+![](https://i.imgur.com/UEsvtv4.png)         
+颜色边缘检测效果：          
+![](https://i.imgur.com/u70l6Iy.png)
+深度法线纹理边缘检测效果：     
+![](https://i.imgur.com/zFYrkKm.png)          
+![](https://i.imgur.com/KlFidg7.png)         
+可以看到，利用深度法线纹理的描边效果要比之前的干净许多，只有物体之间存在明显边界的地方才会被描边，不会收到物体自身纹理和阴影的影响，深度法线纹理边缘检测效果的第二张图为非边缘部分着色为背景色（白色）的效果，这样就完全变成线条速写的风格了。    
+**值得讨论的地方**，回看Shader代码，为什么在做判定的时候，需要同时对深度和法线值的插值都做判断？原因在于同一个物体出现拐角的地方，两侧的法线差值会很大，而他们的深度值可能不会相差很大，而两个平行的平面之间，各自平面上的像素点法线的差值可能会很小，而深度值的差异可能会很大，所以只有法线和深度值的差异都很小时，才能认为他们在同一个面上，不存在边界。同时检测法线和深度值的差异不会发生漏掉边界的情况。
+
+
 
 
 ----------
@@ -4751,7 +4916,7 @@ Unity着色器训练营（1）：
 入门篇 [http://forum.china.unity3d.com/thread-27522-1-1.html  ](http://forum.china.unity3d.com/thread-27522-1-1.html   "Unity着色器训练营（1）入门篇")     
 小小的顶点变换能实现大大的效果  
 (出处: Unity官方中文论坛)  
-一个分享Shader实现思路和源代码的专栏：
+一个分享Shader实现思路和源代码的专栏（大萌喵的Shader相册）：
 [https://zhuanlan.zhihu.com/MeowShader](https://zhuanlan.zhihu.com/MeowShader)
 
 
