@@ -486,18 +486,18 @@ C(emissive)=M(emissive)
 ![](http://i.imgur.com/FoHSWg7.png)  
 
 计算出反射方向后，由**Phong**模型计算高光反射部分：  
-![](http://i.imgur.com/JqrjJKN.png) 
+![](http://i.imgur.com/JqrjJKN.png)        
 M（gloss）是材质的光泽度，也成为反光度  
 
 **Blinn**模型提出一个简单的修改方法得到类似效果，避免计算反射方向，引入一个新的矢量，对入射方向和视角方向求和后归一化得到：  
 ![](http://i.imgur.com/DsgBsxt.png)
-![](http://i.imgur.com/sOGtzHw.png) 
+![](http://i.imgur.com/sOGtzHw.png)           
 然后使用法线方向和新的矢量进行计算而不是反射方向和视角方向：  
 ![](http://i.imgur.com/aVso0PK.png)
 
 - **漫反射（diffuse）**   
 该部分用于描述当光线从光源照射到物体表面时，会向**每个方向**散射的能量。漫反射光照复合Lambert定律：反射光线强度与表面法线和光源之间夹角余弦成正比  
-![](http://i.imgur.com/gcZoOC1.png)
+![](http://i.imgur.com/gcZoOC1.png)        
 使用 **Max** 函数是防止法线和光源方向点乘的结果为负，使物体前面被从背面来的光源照亮。
 - **环境光（ambient）**  
 该部分用于描述其他的间接光照。标准光照模型中，使用一种被称为环境光的部分模拟间接光照。环境光使用全局变量，场景中所有物体都使用这个环境光。   
@@ -4908,6 +4908,177 @@ Shader代码：
 
 
 ### 非真实感渲染 ###
+**非真实渲染（Non-Photorealistic Rendering   NPR）**常用于游戏中来形成特别的视觉效果和风格。
+         
+**卡通风格渲染**         
+卡通风格渲染的游戏画面通常物体颜色分界明显，具有黑色的线条描边。卡通渲染的实现有多种方法，**基于色调的着色技术是其中之一**，实现过程中通过使用漫反射系数对一维纹理进行采样，控制漫反射色调。之前通过一张渐变纹理来控制漫反射颜色实现过卡通风格的渲染效果。卡通风格的高光效果往往是一块分界明显的色块，而物体边缘通常会有描边。本节中将通过基于模型的方式进行描边，而不是之前的屏幕后处理的方式。       
+
+轮廓线渲染       
+轮廓线的渲染是实时渲染中应用非常广泛的一种效果。目前常用的5种绘制模型轮廓线的方法：        
+
+- **基于观察角度和表面法线的轮廓线渲染**      
+使用视角方向和表面法线的点乘结果得到轮廓线信息。简单快速，一个Pass可以得到结果，局限性较大，不能得到比较满意的描边效果。   
+
+- **正背面渲染**     
+使用两个Pass，一个渲染背面，另一个渲染正面面片。快速有效，适用于大多数表面平滑的模型。      
+
+- **基于图像处理的轮廓线**      
+-之前屏幕后处理以及利用深度纹理就是采用的这种方式。可以用于任何模型，但深度和法线变化很小的轮廓无法检测，比如紧贴的薄平面。     
+
+- **基于轮廓边缘的轮廓线检测**     
+通过计算得到精确的轮廓边，然后直接渲染，渲染出独特的风格。检测一条边是否为轮廓边，只需检测和这条边相邻的三角面片是否满足：   
+
+		(N0*V>0)!=(N1*V>0)     
+N0和N1分别是相邻面片的法向，这种方式由于是单帧提取轮廓，当帧数较低时，会出现帧与帧之间的跳跃性。    
+
+- **最后一种是以上的综合渲染方法**       
+首先找到精确的轮廓边，将模型和轮廓渲染到纹理，再通过图形处理的方式识别轮廓线，在图像空间下进行风格化渲染。   
+
+下面使用正背面渲染的方式进行轮廓线的勾勒，之前的正背面渲染中，是直接将顶点在裁剪空间中向裁剪空间下的法线方向进行偏移。这里使用观察空间，在观察空间下对顶点进行观察空间下的法向偏移，区别在于观察空间是一个线性空间，尽管之前的效果也基本达到要求，但线性空间下的处理的结果会更加连贯。为了防止一些内凹的模型在使用正面剔除后发生背面遮挡正面的情况，先对顶点法线的z分量进行定值处理，再将法线归一化后进行扩张。这样可以使扩张后背面更加扁平化，降低遮挡正面面片的可能性。即：    
+
+	viewNormal.z=-0.5;
+	viewNormal=normalize(viewNormalize);
+	viewPos=viewPos+viewNormal*_Outline;
+
+卡通风格的高光通常表现为在模型上是一块块分界明显的色块。为了得到这种效果不再使用之前的高光计算模型。之前Blinn-Phong时，使用法线方向点乘视角和光照方向和的一半，再与_Gloss参数进行指数操作得到系数：   
+
+	float spec=pow(max(0,dot(normal,halfDir)),_Gloss);     
+对于卡通风格的高光反射光照模型，同样需要计算normal和halfDir的点乘结果，然后直接与一个阈值相比较，大于该阈返回1,小于该阈值返回0，以形成分界明显的色块界限：     
+
+	float spec=dot(normal,halfDir);
+	spec=step(threshold,spec);
+CG的**step函数**实现和阈值比较返回0,1结果，第一个为参考值，第二个参数大于第一个参数，返回1，否则返回0。  
+这种直接0,1的取值方式会在高光的边缘区域形成锯齿，因为由0,1突变。为了得到高光边缘叫平滑的效果，可以在边界处的小块区域内进行平滑处理。      
+
+	float spec=dot(normal,halfDir);
+	spec=lerp(0,1,smoothstep(-w,w,spec-threshold));      
+使用CG的**smoothstep函数**，w是一个较小的值，当spec-threshold小于-w时，返回0，大于w时，返回1，否则在0,1之间进行插值。这样的效果是在[-w,w]区间，即高光反射边缘，进行0到1的平滑过渡，防止出现锯齿。w的值可以使用CG的**fwidth函数**得到邻域像素之间的近似导数（像素之间的变化程度）值。   
+
+代码实例：
+
+	Shader "Custom/Chapter14_ToonShading" {
+	Properties{
+		_MainTex("MainTex",2D)="white"{}
+		_Color("Color",Color)=(1,1,1,1)
+		_RampTex("Ramp",2D)="white"{}
+		_Outline("Outline",Range(0,1))=0.1
+		_OutlineColor("OutlineColor",Color)=(0,0,0,1)
+		_Specular("SpecularColor",Color)=(1,1,1,1)
+		_SpecularScale("Specular Scale",Range(0,0.1))=0.01
+	}
+	SubShader{
+		Pass{
+			NAME "OUTLINE"
+			Cull Front
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "UnityCG.cginc"
+
+			fixed _Outline;
+			fixed4 _OutlineColor;
+
+			struct a2v{
+				float4 vertex:POSITION;
+				float3 normal:NORMAL;
+			};
+			struct v2f{
+				float4 pos:SV_POSITION;
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				float4 pos=mul(UNITY_MATRIX_MV,v.vertex);
+				float3 normal=mul((float3x3)UNITY_MATRIX_IT_MV,v.normal);
+				normal.z=-0.5;
+				pos=pos+float4(normalize(normal),0)*_Outline;
+
+				o.pos=mul(UNITY_MATRIX_P,pos);
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				return fixed4(_OutlineColor.rgb,1);
+			}
+			ENDCG
+		}
+
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+			Cull Back
+			CGPROGRAM
+			#pragma vertex   vert
+			#pragma fragment  frag
+			#pragma multi_compile_fwdbase
+			#include "Lighting.cginc"
+			#include "UnityCG.cginc"
+			#include "AutoLight.cginc" 
+
+			sampler2D _MainTex;
+			float4 _MainTex_ST;
+			fixed4 _Color;
+			sampler2D _RampTex;
+			fixed4 _Specular;
+			fixed _SpecularScale;
+
+			struct a2v{
+				float4 vertex:POSITION;
+				float3 normal:NORMAL;
+				float2 texcoord:TEXCOORD0;
+			};
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				float2 uv:TEXCOORD0;
+				float3 worldNormal:TEXCOORD1;
+				float3 worldPos:TEXCOORD2;
+				SHADOW_COORDS(3)
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.uv=TRANSFORM_TEX(v.texcoord,_MainTex);
+				o.worldNormal=mul(v.normal,(float3x3)unity_WorldToObject);
+				o.worldPos=mul(unity_ObjectToWorld,v.vertex).xyz;
+
+				TRANSFER_SHADOW(o);
+
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				fixed3 worldNormal=normalize(i.worldNormal);
+				fixed3 worldLightDir=normalize(UnityWorldSpaceLightDir(i.worldPos));
+				fixed3 worldViewDir=normalize(UnityWorldSpaceViewDir(i.worldPos));
+				fixed3 worldHalf=normalize(worldLightDir+worldViewDir);
+
+				fixed4 c=tex2D(_MainTex,i.uv);
+				fixed3 albedo=c.rgb*_Color.rgb;
+
+				fixed3 ambient=UNITY_LIGHTMODEL_AMBIENT.xyz*albedo;
+
+				UNITY_LIGHT_ATTENUATION(atten,i,i.worldPos);
+				fixed diff=dot(worldNormal,worldLightDir);
+				diff=(diff*0.5+0.5)*atten;
+
+				fixed3 diffuse=_LightColor0.rgb*albedo*tex2D(_RampTex,float2(diff,diff)).rgb;
+
+				fixed spec=dot(worldNormal,worldHalf);
+				fixed w=fwidth(spec)*2.0;
+				fixed3 specular=_Specular.rgb*lerp(0,1,smoothstep(-w,w,spec+_SpecularScale-1))*step(0.0001,_SpecularScale);
+				//最后添加的step(0.0001,_SpecularScale);是为了控制当Specular为0时，不出现高光效果
+				
+				return fixed4(ambient+diffuse+specular,1.0);
+			}
+			ENDCG
+		}
+	}
+	FallBack "Diffuse"
+	//这里的回调需要注意包含能够处理阴影的特殊Pass
+	}   
+实例效果：       
+![](https://i.imgur.com/Vam0Mro.png)   
 
 
 
