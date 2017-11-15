@@ -4388,7 +4388,71 @@ Unity中的深度纹理可以来自真正的深度缓存，也可以由一个单
 之前实现的运动模糊是通过混合多张屏幕图像来模拟运动模糊。另一种实现运动模糊的方式是通过速度映射图，而且该方式应用更加广泛。速度映射图中存储每个像素的速度，使用该速度决定模糊的方向和大小。生成速度缓冲可以将场景中所有物体的速度渲染到一张纹理中，不过该方法需要修改场景中所有物体的Shader代码，使其添加计算速度的代码并输出到下一个渲染纹理中。    
 有一种方法是通过深度纹理在片元着色器中为每个像素计算其在世界空间下的位置，该过程是通过当前视角x投影矩阵的逆矩阵对NDC下的顶点坐标进行变换得到。再将该位置与上一帧的视角x投影矩阵运算，得到该位置在上一帧的投影空间中的位置，计算上一帧该位置和当前帧的位置差，生成该像素的速度。这种方法的优点在于在一个屏幕后处理特效中就能完成整个效果模拟，缺点是在片元着色器中需要进行两次矩阵运算，消耗部分性能。 
   
-完整代码：        
+完整代码：     
+
+	public class Chapter13_MotionBlurWithDepthTexture : PostEffectsBase
+	{
+    public Shader motionShader;
+    private Material motionBlurMaterial = null;
+
+    public Material material
+    {
+        get
+        {
+            motionBlurMaterial = CheckShaderAndCreateMaterial(motionShader, motionBlurMaterial);
+            return motionBlurMaterial;
+        }
+    }
+
+    [Range(0.0f, 1.0f)]
+    public float blurSize = 1.0f;
+    //定义Camera类型变量，以获取该脚本所在的摄像机组件
+    //得到摄像机位置，构建观察空间变换矩阵
+    private Camera myCamera;
+    public Camera camera
+    {
+        get
+        {
+            if (myCamera == null)
+            {
+                myCamera = GetComponent<Camera>();
+            }      
+            return myCamera;
+        }
+    }
+
+    //定义一个保存上一帧视角*投影矩阵
+    private Matrix4x4 previousViewProjectionMatrix;
+
+    //定义摄像机状态，获取深度纹理
+    void OnEable()
+    {
+        camera.depthTextureMode |=DepthTextureMode.Depth;
+    }
+
+    void OnRenderImage(RenderTexture src,RenderTexture dest)
+    {
+        if (material != null)
+        {
+            material.SetFloat("_BlurSize", blurSize);
+
+            material.SetMatrix("_PreviousViewProjectionMatrix", previousViewProjectionMatrix);
+            Matrix4x4 currentViewProjectionMatrix = camera.projectionMatrix*camera.worldToCameraMatrix;
+            Matrix4x4 currentViewProjectionInverseMatrix = currentViewProjectionMatrix.inverse;
+            material.SetMatrix("_CurrentViewProjectionInverseMatrix", currentViewProjectionInverseMatrix);
+            previousViewProjectionMatrix = currentViewProjectionMatrix;
+
+            Graphics.Blit(src, dest, material);
+        }
+        else
+        {
+            Graphics.Blit(src,dest);
+        }
+    }
+	}
+
+   
+Shader代码：
 
 	Shader "Custom/Chapter13_MotionBlurWithDepthTexture" {
 	Properties{
@@ -4908,7 +4972,7 @@ Shader代码：
 
 
 ### 非真实感渲染 ###
-**非真实渲染（Non-Photorealistic Rendering   NPR）**常用于游戏中来形成特别的视觉效果和风格。
+**非真实渲染（Non-Photorealistic Rendering   NPR**常用于游戏中来形成特别的视觉效果和风格。
          
 **卡通风格渲染**         
 卡通风格渲染的游戏画面通常物体颜色分界明显，具有黑色的线条描边。卡通渲染的实现有多种方法，**基于色调的着色技术是其中之一**，实现过程中通过使用漫反射系数对一维纹理进行采样，控制漫反射色调。之前通过一张渐变纹理来控制漫反射颜色实现过卡通风格的渲染效果。卡通风格的高光效果往往是一块分界明显的色块，而物体边缘通常会有描边。本节中将通过基于模型的方式进行描边，而不是之前的屏幕后处理的方式。       
@@ -4923,7 +4987,7 @@ Shader代码：
 使用两个Pass，一个渲染背面，另一个渲染正面面片。快速有效，适用于大多数表面平滑的模型。      
 
 - **基于图像处理的轮廓线**      
--之前屏幕后处理以及利用深度纹理就是采用的这种方式。可以用于任何模型，但深度和法线变化很小的轮廓无法检测，比如紧贴的薄平面。     
+之前屏幕后处理以及利用深度纹理就是采用的这种方式。可以用于任何模型，但深度和法线变化很小的轮廓无法检测，比如紧贴的薄平面。     
 
 - **基于轮廓边缘的轮廓线检测**     
 通过计算得到精确的轮廓边，然后直接渲染，渲染出独特的风格。检测一条边是否为轮廓边，只需检测和这条边相邻的三角面片是否满足：   
@@ -5080,6 +5144,149 @@ CG的**step函数**实现和阈值比较返回0,1结果，第一个为参考值�
 实例效果：       
 ![](https://i.imgur.com/Vam0Mro.png)   
 
+**素描风格渲染**       
+素描风格的渲染在非真实渲染中应用也比较流行。目前实时的素描风格渲染是通过使用提前生成的素描纹理来实现的。     
+![](https://i.imgur.com/BH7j7Op.png)         
+这些纹理组成**色调艺术映射**，纹理从左到右笔触逐渐增多，用于模拟不同光照效果下的漫反射效果，从上到下对应每张纹理的多级渐远纹理。       
+下面的过程不考虑多级渐远纹理的生成，直接使用6张纹理进行渲染。首先在顶点着色器计算逐顶点光照，根据光照结果决定纹理的混合权重，然后传递给片元着色器，片元着色器根据权重混合6张纹理的采样结果。 
+
+实例代码：   
+
+	Shader "Custom/Chapter14_Hatching" {
+	Properties{
+		_Color("Color",Color)=(1,1,1,1)
+		_TileFactor("Tile Factor",Float)=1
+		_Outline("Outline",Range(0,1))=0.1
+		_Hatch0("Hatch 0",2D)="white"{}
+		_Hatch1("Hatch 1",2D)="white"{}
+		_Hatch2("Hatch 2",2D)="white"{}
+		_Hatch3("Hatch 3",2D)="white"{}
+		_Hatch4("Hatch 4",2D)="white"{}
+		_Hatch5("Hatch 5",2D)="white"{}
+
+		//TileFactor为纹理的平铺系数，值越大，素描线条越密集
+	}
+	SubShader{
+		Tags{"RenderType"="Opaque" "Queue"="Geometry"}
+		UsePass "Custom/Chapter14_ToonShading/OUTLINE"  
+		//素描风格往往也需要绘制轮廓线，使用之前的渲染轮廓Pass
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+			CGPROGRAM
+				#pragma vertex vert
+				#pragma fragment frag
+
+				#pragma multi_compile_fwdbase
+
+				#include "UnityCG.cginc"
+				#include "AutoLight.cginc"
+
+				fixed4 _Color;
+				float _TileFactor;
+				fixed _Outline;
+				sampler2D _Hatch0;
+				float4 _Hatch0_ST;
+				sampler2D _Hatch1;
+				float4 _Hatch1_ST;
+				sampler2D _Hatch2;
+				float4 _Hatch2_ST;
+				sampler2D _Hatch3;
+				float4 _Hatch3_ST;
+				sampler2D _Hatch4;
+				float4 _Hatch4_ST;
+				sampler2D _Hatch5;
+				float4 _Hatch5_ST;
+
+				struct a2v{
+					float4 vertex:POSITION;
+					float3 normal:NORMAL;
+					half4 texcoord:TEXCOORD0;
+				};
+
+				struct v2f{
+					float4 pos:SV_POSITION;
+					float2 uv:TEXCOORD0;
+					fixed3 hatchWeight0:TEXCOORD1;
+					fixed3 hatchWeight1:TEXCOORD2;
+					float3 worldPos:TEXCOORD3;
+
+					SHADOW_COORDS(4)
+
+					//6个权重值分别存储在2个float3类型变量中
+				};
+
+				v2f vert(a2v v){
+					v2f o;
+					o.pos=UnityObjectToClipPos(v.vertex);
+					o.uv=v.texcoord.xy*_TileFactor;
+					//_TileFactor用来控制素描线条的密集程度（TEX的WrapMode为Repeat）
+					
+					float3 worldLightDir=normalize(WorldSpaceLightDir(v.vertex));
+					float3 worldNormal=UnityObjectToWorldNormal(v.normal);
+					float3 diff=max(0,dot(worldLightDir,worldNormal));
+					//这里的关键便是通过计算漫反射系数来区分采样权重，并将权重与不同密集程度的TEX相对应
+
+					o.hatchWeight0=fixed3(0,0,0);
+					o.hatchWeight1=fixed3(0,0,0);
+
+					//使用世界空间下的光照方向和法线方向得到漫反射系数
+					//初始化权重值，*7分为7个区间，并根据hatchFactor的值，为权重赋值
+					float hatchFactor=diff*7;
+					if(hatchFactor>6){
+						//不做任何赋值，保持纯白
+					}
+					else if(hatchFactor>5.0){
+						o.hatchWeight0.x=hatchFactor-5.0;
+					}
+					else if(hatchFactor>4.0){
+						o.hatchWeight0.x=hatchFactor-4.0;
+						o.hatchWeight0.y=1.0-o.hatchWeight0.x;
+					}
+					else if(hatchFactor>3.0){
+						o.hatchWeight0.y=hatchFactor-3.0;
+						o.hatchWeight0.z=1.0-o.hatchWeight0.y;
+					}
+					else if(hatchFactor>2.0){
+						o.hatchWeight1.x=hatchFactor-2.0;
+					}
+					else if(hatchFactor>1.0){
+						o.hatchWeight1.x=hatchFactor-1.0;
+						o.hatchWeight1.y=1.0-o.hatchWeight1.x;
+					}
+					else{
+						o.hatchWeight1.y=hatchFactor;
+						o.hatchWeight1.z=1.0-o.hatchWeight1.y;
+					}
+
+					o.worldPos=mul(unity_ObjectToWorld,v.vertex).xyz;
+
+					TRANSFER_SHADOW(o)
+
+					return o;
+				}
+				fixed4 frag(v2f i):SV_Target{
+					fixed4 hatchTex0=tex2D(_Hatch0,i.uv)*i.hatchWeight0.x;
+					fixed4 hatchTex1=tex2D(_Hatch1,i.uv)*i.hatchWeight0.y;
+					fixed4 hatchTex2=tex2D(_Hatch2,i.uv)*i.hatchWeight0.z;
+					fixed4 hatchTex3=tex2D(_Hatch3,i.uv)*i.hatchWeight1.x;
+					fixed4 hatchTex4=tex2D(_Hatch4,i.uv)*i.hatchWeight1.y;
+					fixed4 hatchTex5=tex2D(_Hatch5,i.uv)*i.hatchWeight1.z;
+					//得到6张素描纹理采样结果，并乘以对应的权重
+					fixed4 whiteColor=fixed4(1,1,1,1)*(1.0-i.hatchWeight0.x-i.hatchWeight0.y-i.hatchWeight0.z-i.hatchWeight1.x-i.hatchWeight1.y-i.hatchWeight1.z);
+					fixed4 hatchColor=hatchTex0+hatchTex1+hatchTex2+hatchTex3+hatchTex4+hatchTex5+whiteColor;
+					//计算纯白的占比程度，素描风格中会有留白，并且高光部分也是白色
+					UNITY_LIGHT_ATTENUATION(atten,i,i.worldPos);
+
+					return fixed4(hatchColor.rgb*_Color.rgb*atten,1.0);
+					//混合各个颜色，并与衰减和模型颜色相乘得到最终颜色
+				}
+			ENDCG
+		}
+	}
+	FallBack "Diffsue"
+	}      
+实例效果：       
+![](https://i.imgur.com/6XyaRpJ.png)           
 
 
 ----------
