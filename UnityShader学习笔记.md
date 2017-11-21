@@ -5437,7 +5437,106 @@ CG的**step函数**实现和阈值比较返回0,1结果，第一个为参考值�
 
 实例效果：     
 ![](https://i.imgur.com/j7fmFFC.png)        
-通过设置_BurnAmount的值随时间变化可以得到动态消融效果
+通过设置_BurnAmount的值随时间变化可以得到动态消融效果  
+
+**使用噪声实现扰动的动态效果**     
+扰动效果类似于动漫中人物不动，身后的背景流动，比如说       
+![](https://i.imgur.com/h9gyR3c.jpg)      
+王也小哥手中的两团气团来回流动的效果
+扰动效果的实现关键点在于：      
+使用遮罩纹理区别流动和非流动区域，      
+使用噪声纹理来控制流动过程的随机性，    
+这里使用的源纹理：      
+![](https://i.imgur.com/orm8wZm.jpg)       
+遮罩纹理一般是对源纹理做处理：      
+![](https://i.imgur.com/qMOdlKC.png)        
+黑色区域即为不受扰动影响的区域，而红色部分为需要应用扰动效果的区域，因为是通过采样遮罩纹理的值去控制，所以黑色部分采样值乘以处理结果的像素颜色后得0，这样就不受扰动效果的影响，而其他部分为红色是由于采样的通道定为R，当然也可以使用其他通道。      
+噪声纹理可以通用，WarpMode设为Repeat就可以     
+主要思想是：       
+通过噪声纹理和时间变量得到对源纹理UV采样的动态偏移值，       
+通过对遮罩纹理的采样结果*动态偏移值来控制受扰动的区域       
+实例代码：       
+
+	Shader "Custom/Disturbance" {
+	Properties{
+		_MainTex("MainTex",2D)="white"{}
+		_Mask("Mask",2D)="white"{}
+		_Noise("Noise",2D)="white"{}
+		_NoiseSpeedX("NoiseSpeedX",Range(0.0,3.0))=1.0
+		_NoiseSpeedY("NoiseSpeedY",Range(0.0,3.0))=1.0
+		_NoiseIntensity("NoiseIntensity",Range(0.0,3.0))=1.0
+	}
+	SubShader{
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "UnityCG.cginc"
+
+			sampler2D _MainTex;
+			float4 _MainTex_ST;
+			sampler2D _Mask;
+			float4 _Mask_ST;
+			sampler2D _Noise;
+			float4 _Noise_ST;
+			half _NoiseSpeedX;
+			half _NoiseSpeedY;
+			half _NoiseIntensity;
+
+			struct a2v{
+				float4 vertex:POSITION;
+				float2 texcoord:TEXCOORD0;
+			};
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				float2 uv1:TEXCOORD0;
+				float2 uv2:TEXCOORD1;
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.uv1=TRANSFORM_TEX(v.texcoord,_MainTex);
+				o.uv2=TRANSFORM_TEX(v.texcoord,_Noise);
+
+				return o;
+			}
+
+			//噪声纹理采样得到随机值并映射
+			fixed2 SamplerFromNoise(float2 uv){
+				float2 newUv=uv*_Noise_ST.xy+_Noise_ST.zw;
+				fixed4 noiseColor=tex2D(_Noise,newUv);
+				noiseColor=(noiseColor*2-1)*0.05;
+				return noiseColor;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				//遮罩纹理采样
+				fixed4 mask=tex2D(_Mask,i.uv1);
+				//时间变量(t/20,t,2t,3t)
+				float2 time=float2(_Time.x,_Time.x);
+				//计算噪声偏移
+				fixed2 noiseOffset=fixed2(0,0);
+				noiseOffset=SamplerFromNoise(i.uv2+time*float2(_NoiseSpeedX,_NoiseSpeedY));
+				//主纹理采样,使用噪声纹理控制扰动区域
+				fixed4 mainColor=tex2D(_MainTex,i.uv1+noiseOffset*_NoiseIntensity*mask.r);
+				
+				return mainColor;
+			}
+			ENDCG
+		}
+	}
+	FallBack "Diffuse"
+	}           
+实例效果：     
+扰动效果前：       
+![](https://i.imgur.com/Q32kP6y.jpg)        
+扰动效果：      
+![](https://i.imgur.com/xpjrWXf.jpg)        
+这个效果时动态的，因为使用了时间变量，当然可以使用粒子效果和多层次扰动实现更加精细的效果。
+
 
 ----------
 ### 相关参考 ###
