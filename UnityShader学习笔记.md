@@ -5289,8 +5289,8 @@ CG的**step函数**实现和阈值比较返回0,1结果，第一个为参考值�
 ![](https://i.imgur.com/6XyaRpJ.png)           
 
 ### 使用噪声 ###
-噪声的使用会使结果充满随机性，从而表现效果更加自然。
-**消融效果**        
+噪声的使用会使结果充满随机性，从而表现效果更加自然。     
+**消融效果**               
 消融效果常在游戏中角色死亡，物品烧毁中被使用。消融效果往往从不同区域开始，并向看似随机的方向进行扩张，最后整个物体都消失不见。消融效果可以通过噪声纹理+透明度测试去实现。使用对噪声纹理进行采样的结果与某个控制消融效果的阈值进行比较，小于阈值，使用**clip函数**将该像素点裁剪掉，对应被烧毁的部分，而边缘部分的烧焦效果则将两种颜色进行混合，在使用pow函数处理，得到最终边缘烧毁颜色。    
 实例代码：    
 
@@ -5535,7 +5535,122 @@ CG的**step函数**实现和阈值比较返回0,1结果，第一个为参考值�
 ![](https://i.imgur.com/Q32kP6y.jpg)        
 扰动效果：      
 ![](https://i.imgur.com/xpjrWXf.jpg)        
-这个效果时动态的，因为使用了时间变量，当然可以使用粒子效果和多层次扰动实现更加精细的效果。
+这个效果时动态的，因为使用了时间变量，当然可以使用粒子效果和多层次扰动实现更加精细的效果。   
+
+**水波效果**          
+噪声纹理也可以应用在实时水面的模拟中。通常将噪声纹理用作高度图，不断修改水面的法线方向。通过使用时间变量来对噪声纹理进行采样以得到不断流动的效果，得到法线信息后，再进行正常的反射+折射的计算，得到动态水面效果。在之前实现玻璃效果时，通过使用一个Cubemap纹理作为环境纹理以采样得到反射效果，折射效果的模拟是使用GrabPass抓取当前的渲染纹理，使用切线空间下的法线方向对采样坐标进行偏移，并使用该坐标对屏幕图像进行采样，近似模拟折射效果。在实现水波的过程中，将使用噪声纹理得到法线，并结合时间变量实现动态效果。得到折射与反射值后，其混合值的混合系数通过公式得到： 
+
+	fresnel=pow(1-max(0,v*n),4)            
+观察方向与法线方向夹角越小，fresnel值越小，反射越弱，折射越强，在水面非常清澈的情况下。  
+
+实例代码：     
+
+	Shader "Custom/Chapter15_WaterWave" {
+	Properties{
+		_Color("MainColor",Color)=(1,1,1,1)   //水面颜色
+		_MainTex("MainTex",2D)="white"{}    //水面纹理
+		_WaveMap("WaveMap",2D)="bump"{}
+		_CubeMap("CubeMap",Cube)="_Skybox"{}
+		_WaveXSpeed("WaveXSpeed",Range(-0.1,0.1))=0.01
+		_WaveYSpeed("WaveYSpeed",Range(-0.1,0.1))=0.01
+		_Distortion("Distortion",Range(0,100))=10   //控制图像扭曲程度
+	}
+
+	SubShader{
+		Tags{"Queue"="Transparent" "RenderType"="Opaque"}
+		//这里设置渲染队列为Transparent,是为了保证渲染该物体前，其他所有不透明物体已经被渲染
+		//而设置渲染类型则是为了使用摄像机的深度和法线纹理时，物体被正确渲染（会使用着色器替换技术）
+		GrabPass{"_RefractionTex"}
+		Pass{
+			Tags{"LightMode"="ForwardBase"}
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "UnityCG.cginc"
+
+			fixed4 _Color;
+			sampler2D _MainTex;
+			float4 _MainTex_ST;
+			sampler2D _WaveMap;
+			float4 _WaveMap_ST;
+			samplerCUBE _CubeMap;
+			fixed _WaveXSpeed;
+			fixed _WaveYSpeed;
+			float _Distortion;
+			sampler2D _RefractionTex;
+			float4 _RefractionTex_TexelSize;
+
+			struct a2v{
+				float4 vertex:POSITION;
+				float3 normal:NORMAL;
+				float4 tangent:TANGENT;
+				float4 texcoord:TEXCOORD0;
+			};
+
+			struct v2f{
+				float4 pos:SV_POSITION;
+				float4 srcPos:TEXCOORD0;
+				float4 uv:TEXCOORD1;
+				float4 TtoW0:TEXCOORD2;
+				float4 TtoW1:TEXCOORD3;
+				float4 TtoW2:TEXCOORD4;
+			};
+
+			v2f vert(a2v v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);    
+				o.srcPos=ComputeGrabScreenPos(o.pos);
+				o.uv.xy=TRANSFORM_TEX(v.texcoord,_MainTex);
+				o.uv.zw=TRANSFORM_TEX(v.texcoord,_WaveMap);
+
+				float3 worldPos=mul(unity_ObjectToWorld,v.vertex);
+				float3 worldNormal=UnityObjectToWorldNormal(v.normal);
+				float3 worldTangent=UnityObjectToWorldDir(v.tangent.xyz);
+				float3 worldBinormal=cross(worldNormal,worldTangent)*v.tangent.w;
+
+				o.TtoW0=float4(worldTangent.x,worldBinormal.x,worldNormal.x,worldPos.x);
+				o.TtoW1=float4(worldTangent.y,worldBinormal.y,worldNormal.y,worldPos.y);
+				o.TtoW2=float4(worldTangent.z,worldBinormal.z,worldNormal.z,worldPos.z);
+
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				float3 worldPos=float3(i.TtoW0.w,i.TtoW1.w,i.TtoW2.w);
+				fixed3 viewDir=normalize(UnityWorldSpaceViewDir(worldPos));
+				float2 speed=_Time.y*float2(_WaveXSpeed,_WaveYSpeed); //_Time(t/20,t,2t,3t)
+
+				//切线空间下的法线采样并反解
+				fixed3 bump1=UnpackNormal(tex2D(_WaveMap,i.uv.zw+speed)).rgb;
+				fixed3 bump2=UnpackNormal(tex2D(_WaveMap,i.uv.zw-speed)).rgb;
+				fixed3 bump=normalize(bump1+bump2);
+				//两次对法线纹理采样，模拟两层水面交叉效果
+
+				//使用切线空间下的法线进行偏移，该空间下的法线可以反映顶点局部空间下的法线方向
+				float2 offset=bump.xy*_Distortion*_RefractionTex_TexelSize;
+				i.srcPos.xy=offset*i.srcPos.z+i.srcPos.xy; //使用i.srcPos.z与偏移相乘，模拟深度越大，折射越强的效果
+				fixed3 refrCol=tex2D(_RefractionTex,i.srcPos.xy/i.srcPos.w).rgb;
+
+				//进行矩阵变换，得到世界空间下的法线方向
+				bump=normalize(half3(dot(i.TtoW0.xyz,bump),dot(i.TtoW1.xyz,bump),dot(i.TtoW2.xyz,bump)));
+				fixed3 texColor=tex2D(_MainTex,i.uv.xy+speed);
+				fixed3 reflDir=reflect(-viewDir,bump);
+				fixed3 reflCol=texCUBE(_CubeMap,reflDir).rgb*texColor*_Color;
+
+				fixed3 fresnel=pow(1-max(0,dot(viewDir,bump)),4);
+				fixed3 finalColor=refrCol*(1-fresnel)+reflCol*fresnel;
+
+				return fixed4(finalColor,1);
+			}
+			ENDCG
+		}
+	}
+	FallBack "Transparent"
+	}    
+实例效果：      
+![](https://i.imgur.com/AbvgFsZ.png)          
+
+
 
 
 ----------
