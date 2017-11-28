@@ -5648,9 +5648,232 @@ CG的**step函数**实现和阈值比较返回0,1结果，第一个为参考值�
 	FallBack "Transparent"
 	}    
 实例效果：      
-![](https://i.imgur.com/AbvgFsZ.png)          
+![](https://i.imgur.com/AbvgFsZ.png)                  
 
+**通过噪声纹理实现不均匀雾效**           
+之前通过深度纹理实现基于屏幕后处理的雾效，由深度纹理重建像素的世界空间下的位置，使用基于高度的公式计算全局雾效系数，然后使用该系数混合雾的颜色和原屏幕颜色。这种雾效是一种均匀的雾效，通过噪声纹理可以实现不均匀雾效。
 
+实例代码：   
+
+	public class Chapter15_FogWithNoise : PostEffectsBase
+	{
+    public Shader fogShader;
+
+    private Material fogMaterial;
+    public Material material
+    {
+        get
+        {
+            fogMaterial = CheckShaderAndCreateMaterial(fogShader, fogMaterial);
+            return fogMaterial;
+        }
+    }
+
+    private Camera myCamera;
+    public Camera camera
+    {
+        get
+        {
+            if (myCamera == null)
+            {
+                myCamera = GetComponent<Camera>();
+            }
+            return myCamera;
+        }
+    }
+
+    private Transform myCameraTransform;
+    public Transform cameraTransform
+    {
+        get
+        {
+            if (myCameraTransform == null)
+            {
+                myCameraTransform = camera.transform;
+            }
+            return myCameraTransform;
+        }
+    }
+
+    [Range(0.1f, 3.0f)]
+    public float fogDensity = 1.0f;
+
+    public Color fogColor = Color.white;
+    public float fogStart = 0.0f;
+    public float fogEnd = 2.0f;
+
+    public Texture noiseTexture;
+
+    [Range(-0.5f, 0.5f)]
+    public float fogXSpeed = 0.1f;
+    [Range(-0.5f, 0.5f)]
+    public float fogYSpeed = 0.1f;
+
+    [Range(0.0f, 3.0f)]
+    public float noiseAmount = 1.0f;
+
+    void OnEnable()
+    {
+        camera.depthTextureMode |=DepthTextureMode.Depth;
+    }
+
+    void OnRenderImage(RenderTexture src, RenderTexture dest)
+    {
+        if (material != null)
+        {
+            Matrix4x4 frustumCornors = Matrix4x4.identity;
+
+            float fov = camera.fieldOfView;
+            float near = camera.nearClipPlane;
+            float aspect = camera.aspect;
+
+            float halfHeight = near * Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad);
+            Vector3 toRight = cameraTransform.right*halfHeight*aspect;
+            Vector3 toTop = cameraTransform.up*halfHeight;
+
+            Vector3 topLeft = camera.transform.forward*near + toTop - toRight;
+            float scale = topLeft.magnitude/near;
+
+            Vector3 topRight = camera.transform.forward*near + toTop + toRight;
+            topRight.Normalize();
+            topRight *= scale;
+
+            Vector3 bottomLeft = camera.transform.forward*near - toTop - toRight;
+            bottomLeft.Normalize();
+            bottomLeft *= scale;
+
+            Vector3 bottomRight = camera.transform.forward*near - toTop + toRight;
+            bottomRight.Normalize();
+            bottomRight *= scale;
+
+            frustumCornors.SetRow(0,bottomLeft);
+            frustumCornors.SetRow(1,bottomRight);
+            frustumCornors.SetRow(2,topRight);
+            frustumCornors.SetRow(3,topLeft);
+
+            material.SetMatrix("_FrustumCornorsRay",frustumCornors);
+            material.SetFloat("_FogDensity",fogDensity);
+            material.SetColor("_FogColor",fogColor);
+            material.SetFloat("_FogStart",fogStart);
+            material.SetFloat("_FogEnd",fogEnd);
+
+            material.SetTexture("_NoiseTex",noiseTexture);
+            material.SetFloat("_FogXSpeed",fogXSpeed);
+            material.SetFloat("_FogYSpeed",fogYSpeed);
+            material.SetFloat("_NoiseAmount",noiseAmount);
+
+            Graphics.Blit(src,dest,material);
+        }
+        else
+        {
+            Graphics.Blit(src,dest);
+        }
+    }
+	}
+
+Shader代码： 
+
+	Shader "Custom/Chapter15_FogWithNoise" {
+	Properties{
+		_MainTex("MainTex",2D)="white"{}
+		_FogDensity("FogDensity",Float)=1.0
+		_FogColor("FogColor",Color)=(1,1,1,1)
+		_FogStart("FogStart",Float)=0.0
+		_FogEnd("FogEnd",Float)=1.0
+		_NoiseTex("NoiseTex",2D)="white"{}
+		_FogXSpeed("FogXPeed",Float)=0.1
+		_FogYSpeed("FogYSpeed",Float)=0.1
+		_NoiseAmount("NoiseAmount",Float)=1
+	}
+
+	SubShader{
+		CGINCLUDE
+		#include "UnityCG.cginc"
+
+			float4x4 _FrustumCornorsRay;
+			sampler2D _MainTex;
+			half4 _MainTex_TexelSize;
+			sampler2D _CameraDepthTexture;
+			half _FogDensity;
+			fixed4 _FogColor;
+			float _FogStart;
+			float _FogEnd;
+			sampler2D _NoiseTex;
+			float _FogXSpeed;
+			float _FogYSpeed;
+			float _NoiseAmount;
+
+			struct v2f{
+				float4 pos:POSITION;
+				half2 uv:TEXCOORD0;
+				half2 uv_depth:TEXCOORD1;
+				float4 interpolatedRay:TEXCOORD2;
+			};
+
+			v2f vert(appdata_img v){
+				v2f o;
+				o.pos=UnityObjectToClipPos(v.vertex);
+				o.uv=v.texcoord;
+				o.uv_depth=v.texcoord;
+
+				#if UNITY_UV_STARTS_AT_TOP
+				if(_MainTex_TexelSize.y<0)
+					o.uv_depth.y=1-o.uv_depth.y;
+				#endif
+
+				int index=0;
+				if(v.texcoord.x<0.5&&v.texcoord.y<0.5){
+					index=0;
+				}
+				if(v.texcoord.x>0.5&&v.texcoord.y<0.5){
+					index=1;
+				}
+				if(v.texcoord.x>0.5&&v.texcoord.y>0.5){
+					index=2;
+				}
+				else{
+					index=3;
+				}
+
+				#if UNITY_UV_STARTS_AT_TOP
+					if(_MainTex_TexelSize.y<0)
+					index=3-index;
+				#endif
+
+				o.interpolatedRay=_FrustumCornorsRay[index];
+				return o;
+			}
+
+			fixed4 frag(v2f i):SV_Target{
+				float linearDepth=LinearEyeDepth(SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture,i.uv_depth));
+				float3 worldPos=_WorldSpaceCameraPos+linearDepth*i.interpolatedRay.xyz;
+
+				float2 speed=_Time.y*float2(_FogXSpeed,_FogYSpeed);
+				float noise=(tex2D(_NoiseTex,i.uv+speed).r-0.5)*_NoiseAmount;
+
+				float fogDensity=(_FogEnd-worldPos.y)/(_FogEnd-_FogStart);
+				fogDensity=saturate(fogDensity*_FogDensity*(1+noise));
+
+				fixed4 finalColor=tex2D(_MainTex,i.uv);
+				finalColor.rgb=lerp(finalColor.rgb,_FogColor.rgb,fogDensity);
+
+				return finalColor;
+			}
+
+		ENDCG
+
+		Pass{
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			ENDCG
+		}
+	}
+	FallBack Off
+	}      
+实例效果：       
+![](https://i.imgur.com/t14XzPS.png)             
+由于在采样时加入时间变量，因此雾效会有动态效果，加上噪声纹理来控制雾效密度后，可以得到非均匀的雾效效果。
 
 
 ----------
