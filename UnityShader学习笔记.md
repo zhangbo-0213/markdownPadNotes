@@ -6133,9 +6133,85 @@ Unity中提供两种批处理技术，分别是**静态批处理**和 **动态�
 - **设置合理的分辨率**      
 移动平台中，可以设置合理的屏幕分辨率以保证一定的帧率运行。
 
+### Unity表面着色器 ###
+Unity渲染工程师认为顶点/几何/片元着色器这种Shader是对硬件一种友好的操作，但不符合开发者的思考方式。提出表面着色器/光照模型/光照着色器的模式，其中             
 
+- 表面着色器定义模型表面的反射率、法线和高光    
+- 光照模型选择兰伯特还是Blinn-Phong等模型
+- 光照着色器负责计算衰减和阴影等   
 
- 
+这种划分模式让开发者大部分时间关注表面着色器，纹理和颜色，光照模型可以提前定义好，使用的时候直接选择使用哪种模型。光照着色器由系统实现，不会轻易改动，这样的话Shader的编写会简便许多。     
+**SurfaceShader**在2010年Unity3中被添加，实际上是对顶点/片元着色器的基础上添加了一层抽象。       
+
+一个基础的法线+漫反射纹理的**表面着色器**：           
+
+Shader代码：       
+
+	Shader "Custom/Chapter17_BumpedDiffuse" {
+	Properties{
+		_Color("Color",Color)=(1,1,1,1)
+		_MainTex("MainTex",2D)="white"{}
+		_BumpMap("NormalMap",2D)="bump"{}
+	}
+	SubShader{
+		Tags{"Renderer"="Opaque"}
+		LOD 300
+
+		CGPROGRAM
+		#pragma surface surf Lambert
+		#pragma target 3.0
+
+		fixed4 _Color;
+		sampler2D _MainTex;
+		sampler2D _BumpMap;
+
+		struct Input{
+			float2 uv_MainTex;
+			float2 uv_BumpMap;
+		};
+
+		void surf (Input IN,inout SurfaceOutput o){
+			fixed4 tex=tex2D(_MainTex,IN.uv_MainTex);
+			o.Albedo=tex.rgb*_Color.rgb;
+			o.Alpha=tex.a*_Color.a;
+			o.Normal=UnpackNormal(tex2D(_BumpMap,IN.uv_BumpMap));
+		}
+		ENDCG
+	}
+	FallBack "Legacy Shader/Diffuse"
+	}         
+
+实际效果：      
+![](https://i.imgur.com/DurG3GY.png)       
+同时可以添加点光源，而无需改动Shader代码：            
+![](https://i.imgur.com/60Z717a.png)          
+
+若要实现同样的效果，在顶点片元着色器内所需的代码行数超过100行，而在表面着色器中只需30行就能实现，光照的计算和处理由Unity处理，开发者无需与光照变量打交道。    
+
+表面着色器与顶点/片元着色器不同，CG代码不需要写在一个特定的Pass内，而是直接写在SubShader内，Unity会后台生成多个对应Pass。      
+
+表面着色器最重要的部分为**两个结构体**& **编译指令**。结构体是表面着色器不同函数之间的信息传递介质，而编译指令是与Unity进行沟通。      
+
+**编译指令**       
+表面着色器的编译指令用来与Unity进行沟通，设置表面函数的表面属性，使用哪个光照模型，以及其他设置，例如阴影、环境光和雾效等。      
+编译指令最重要的是设置**表面函数**和 **光照函数**，并且设置一些可选参数。编译指令格式：       
+
+	#pragma surface surfaceFunction lightModel [optionalparams]     
+	//#pragma surface用来指明该编译命令用于表面着色器，       
+	//后面需要指定使用的表面函数（surfaceFunction），      
+	//光照模型（lightModel）,同时可以通过可选参数进行更多设置      
+
+**表面函数**         
+编译指令中的surfaceFunction用来定义表面函数来指定表面的反射率，透明度，法线等属性。通常surfaceFunction即为名为surf的函数，函数格式固定为以下几种：         
+
+	void surf (Input IN, inout SurfaceOutput o)
+	void surf (Input IN, inout SurfaceOutputStandard o)
+	void surf (Input IN, inout SurfaceOutputStandardSpecular o)     
+通常，在表面函数中会使用输入结构体Input IN 设置各种表面属性，将这些属性存储在输出结构体中（不同的输出结构体配合不同的光照模型），然后传递给光照函数计算光照结果。         
+
+**光照函数**      
+在指定完表面函数后，需要指定光照函数。光照函数会使用表面函数中设定的各种表面属性，来应用于指定的光照函数，模拟表面光照效果。Unity内置了基于物理的光照模型函数**Standard**和 **StandardSpecular**,和简单的非基于物理的光照模型函数**Lambert**和 **BlinnPhong**。前面的示例中，使用的是Lambert光照函数。同时，也可以定义自己的光照模型函数。
+
 
 ----------
 ### 相关参考 ###
