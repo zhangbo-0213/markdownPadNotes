@@ -6235,7 +6235,109 @@ Shader代码：
 
 **Input**结构体包含了许多表面数据来源，作为表面函数的输入，如果自定义了顶点修改函数，该结构体也会是顶点修改函数的输出结构体。Input支持许多内置变量名。在之前的示例中，使用了 uv_MainTex和uv_BumpMap作为主纹理和法线纹理的采样坐标，类似的变量包括：       
 ![](https://i.imgur.com/nPWCiaH.png)             
-上述变量不需要自己计算，Unity会在背后准备好这些变量，使用者可以直接在表面函数中使用。
+上述变量不需要自己计算，Unity会在背后准备好这些变量，使用者可以直接在表面函数中使用。     
+
+**SurfaceOutput**用于存储表面属性，这些表面属性根据Input结构体提供的数据计算得到，类似的表面属性结构体还包括**SurfaceOutputStandrd、SurfaceOutputStandardSpecular**，这些结构体会作为表面函数的输出，随后作为光照函数的输入进行光照计算。表面函数结构体内的变量是提前声明好的，不可以增加和减少，没有赋值的变量采取默认值，例如 **SurfaceOutput**结构体的变量：    
+
+	struct SurfaceOutput{
+		fixed3 Albedo;
+		fixed3 Normal;
+		fixed3 Emission;
+		half Specular;
+		fixed Gloss;
+		fixed Alpha;
+	}            
+**SurfaceOutputStandard**           
+
+	struct SurfaceOutputStandard{
+		fixed3 Albedo;
+		fixed3 Normal;
+		half3 Emission;
+		half Metallic;
+		half Smoothness;
+		half Occlusion;
+		half Alpha;
+	}         
+**SurfaceOutputStandardSpecular**        
+
+	struct SurfaceOutputSatanardSpecular{
+		fixed3 Albedo;
+		fixed3 Specular;
+		fixed3 Normal;
+		half3 Emission;
+		half Smoothness;
+		half Occlusion;
+		fixed Alpha;
+	}     
+
+不同的表面属性结构体的选择取决于所使用的光照模型，如果使用简单的光照模型，如Lambert,BlinnPhong使用第一个结构体即可，而如果使用的是基于物理的光照模型Standard或者是StandardSpecular,分别对应使用SurfaceOutputStandard和SurfaceOutputStandardSpecular结构体。       
+
+**表面着色器的实例分析**        
+自定义表面着色器中的4种可自定义函数（顶点修改函数、表面函数函数、光照函数、最后的颜色修改函数），实现顶点沿法线方向扩张效果。              
+实例代码：   
+
+	Shader "Custom/Chapter17_NormalExtrusion" {
+	Properties{
+		_Color("Color",Color)=(1,1,1,1)
+		_MainTex("MainTex",2D)="white"{}
+		_BumpMap("BumpMap",2D)="bump"{}
+		_Amount("ExtrusionAmount",Range(-0.5,0.5))=0.1
+	}
+	SubShader{
+		Tags{"RenderType"="Opaque"}
+		LOD 300
+
+		CGPROGRAM
+		#pragma surface surf CustomLambert vertex:myvert finalcolor:mycolor addshadow exclude_path:deferred exclude_path:prepass nometa
+		#pragma target 3.0
+
+		fixed4 _Color;
+		sampler2D _MainTex;
+		sampler2D _BumpMap;
+		half _Amount;
+
+		struct Input{
+			float2 uv_MainTex;
+			float2 uv_BumpMap;
+		};
+
+		//自定义顶点修改函数
+		void myvert(inout appdata_full v){
+			v.vertex.xyz+=v.normal*_Amount;
+		}
+
+		//自定义表面函数
+		void surf(Input IN,inout SurfaceOutput o){
+			fixed4 tex=tex2D(_MainTex,IN.uv_MainTex);
+			o.Albedo=tex.rgb;
+			o.Normal=UnpackNormal(tex2D(_BumpMap,IN.uv_BumpMap));
+			o.Alpha=tex.a;	
+		}
+
+		//自定义的光照模型函数，兰伯特光照模型，返回漫反射颜色值
+		half4 LightingCustomLambert(SurfaceOutput s,half3 lightDir,half atten){
+			half NdotL=dot(s.Normal,lightDir);
+			half4 c;
+			c.rgb=s.Albedo*_LightColor0.rgb*(NdotL*atten);
+			c.a=s.Alpha;
+			return c;
+		}
+
+		//自定义最后颜色修改函数，将光照模型函数的输出作为输入，与_Color的值进行叠加
+		void mycolor(Input IN,SurfaceOutput o,inout fixed4 color){
+			color*=_Color;
+		}
+		ENDCG
+	}
+	FallBack "Legacy Shaders/Diffuse"
+	}     
+实例效果：     
+![](https://i.imgur.com/Gm5k93E.png)        
+左边为Amount值为0，即不进行扩张，右边Amount值为0.08    
+
+**SurfaceShader缺点**             
+尽管在示例使用的SurfaceShader用了较少的代码量实现了顶点/片元着色器较多代码才能实现的效果，但是性能上是有差别的，因为在使用SurfaceShader时，Unity在背后实现了对应了的顶点/片元着色器代码。SurfaceShader是对顶点/片元着色器的一种封装，这种封装一定程度上会给开发者带来便利，但同时会带来性能上的损耗，尽管能够较快的实现各种光照效果，但是会失去各种优化和特效实现的控制。
+
 
 
 ----------
