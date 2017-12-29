@@ -466,7 +466,602 @@ HDEBFCGA
 	return 0;
 	}		
 
-如果所用二叉树需经常遍历或查找结点时需要某种遍历序列中的前驱和后继，可以采用线索二叉链表的存储结构
+如果所用二叉树需经常遍历或查找结点时需要某种遍历序列中的前驱和后继，可以采用线索二叉链表的存储结构           
+
+### 图 ###
+图是由顶点的有穷非空集合和顶点之间的边的集合组成，通常表示为：G（V，E），其中，G表示一个图，V是图中的顶点的集合，E是图G中边的集合。         
+
+- 线性表中的数据元素叫元素，树中的数据元素叫结点，图中的数据元素叫顶点。
+- 线性表中可以没有元素，叫空表，树中可以没有结点，叫空树，而图中不能没有顶点，在定义中，V是顶点的集合，有穷且非空。
+- 线性表中，相邻的数据元素具有线性关系，树结构中，相邻两层的结点具有层次关系，而图中任意两个顶点之间都可能有关系，顶点之间的逻辑关系用边来表示，边集可以是空的。    
+
+关于图的各种定义：       
+**无向边&无向图**             
+若顶点Vi到顶点Vj之间的边没有方向，则称这条边为无向边，用无序偶对（Vi，Vj）来表示。如果任意两个顶点之间的边都是无向边，则称该图为无向图。无向图表示法：G=（V1，{E1}），其中V1={A,B,C,D}，E1={（A,B），（B,C），（C,D），（A,C）} (**无向边小括号**)        
+
+**有向边&有向图**       
+若顶点Vi到顶点Vj的边有方向，称该边为有向边，也叫作**弧**。使用有序偶<Vi,Vj>表示，Vi为弧尾，Vj为弧头。如果任意两个顶点之间的边为有向边，则称该图为有向图。有向图的表示法：G=（V2，{E2}），其中V2={A,B,C,D}，E2={<A,D>,<B,C>,<C,A>,<B,A>}   ( **有向边尖括号**)         
+
+**相关术语**         
+在图中，如果不存在顶点到自身的边，且同一条边不重复再出现，则称该图为 **简单图**            
+
+在无向图中，如果任意两个顶点之间都存在边，则称该图为无向完全图。n的顶点的无向完全图的边的数目：n*(n-1)/2           
+
+在有向图中，如果任意两个顶点之间都存在方向互为相反的两条弧，则称该图为有向完全图。n个顶点的有向完全图的弧的数目：n*(n-1)        
+
+有些图的边或弧具有与他相关的数字，这种与图的边或弧相关的数叫做**权**，带权的图通常称为 **网**。      
+
+图G=（V，{E}），图G'=(V'，{E'})，且 V属于V’，E属于E'，称G为G'的子图。     
+
+无向图中，顶点v的度为与该顶点相关联的边的数目，即为TD（v）。图中边的数目为各顶点的度的和的一半。    
+
+有向图中，顶点v的度为入度和出度之和，入度为以顶点V为头的弧，记作ID（v），出度为以顶点V为尾的弧，记作OD（v）。有向图中的边的数目为顶点的ID（v）,或者OD（v）。      
+
+图中顶点V到顶点V'之间的路径为顶点的序列，对于无向图该序列中相邻的点之间的边属于无向图的边的集合，对于有向图该序列中的相邻点组成的具有方向性，属于有向图的弧的集合。**路径的长度为弧或边的数目。**           
+
+**连通图相关术语**            
+在无向图中，如果顶点V到顶点V'有路径，称为V和V'是连通的。如果对于图中任意两个顶点都是连通的，则称该图为连通图。         
+
+无向图中的极大连通子图称为连通分量，连通分量强调：             
+
+- 要是子图       
+- 子图要是连通的       
+- 连通子图含有极大顶点数         
+- 具有极大顶点数的连通子图包含依附于这些顶点的所有边         
+
+而有向图中，如果对于每一对属于顶点集的Vi，Vj，从Vi到Vj和从Vj到Vi都存在路径，则称该有向图为强连通图，有向图中的极大强连通子图称作有向图的强连通分量。     
+
+**连通图的生成树**        
+一个连通图的生成树是一个极小的连通子图，含有图中全部的n个顶点，但只有足以构成一棵树的n-1条边。     
+        
+如果一个有向图恰有一个顶点的入度为0，其他顶点的入度均为1，则是一棵有向树。一个有向图由若干有向树构成森林。         
+
+**图的抽象数据类型**                   
+![](https://i.imgur.com/Uc5leta.png)          
+
+**图存储结构**  
+               
+- **邻接矩阵**         
+图的邻接矩阵存储方式是用两个数组来表示图。一个一维数组存储图中顶点信息，一个二维数组（为邻接矩阵）存储图中的边或弧的信息       
+无向图：         
+![](https://i.imgur.com/dW3XK20.png)             
+有向图：         
+![](https://i.imgur.com/zKfevoN.png)          
+无向图的邻接矩阵是对称阵，有向图的邻接矩阵不一 定是对称阵        
+网中存储权值：         
+![](https://i.imgur.com/U9ASSlh.png)          
+![](https://i.imgur.com/bsOMUo9.png)             
+
+- **邻接表**         
+对于边数相对于顶点较少的图，使用邻接矩阵会对存储空间造成一定的浪费。这时可以采用将数组与链表相结合的存储方式，称为邻接表。              
+顶点数组中存储顶点信息和一个指向第一个邻接点的指针，边表结点由存储某顶点的下标和边表中下一个结点的指针域构成           
+无向图邻接表            
+![](https://i.imgur.com/U7v5WIp.png)         
+有向图邻接表             
+![](https://i.imgur.com/2gbNZtP.png)                 
+有向图有方向，边表中可以按照以该顶点的弧尾储存，或者弧头存储             
+带权值的网图：                   
+![](https://i.imgur.com/2VSvK3R.png)                
+边表再添加权值域存储权值          
+
+- **十字链表**           
+对于有向图来说，邻接链表是有缺陷的。关心出度问题，想了解入度情况，需要遍历整个图。将邻接链表和逆邻接链表结合。         
+顶点数组的数据元素除了数据域和出度指针域外，添加入度指针域，即指向弧头为该顶点的弧边结点         
+弧边结点为两个数据域两个指针域，数据域分别记录该弧的弧头和弧尾的顶点下标，指针域一个指向顶点出度的弧，一个指向顶点入度的弧       
+![](https://i.imgur.com/4pstVoa.png)             
+十字链表将邻接表和逆邻接表结合，可以方便找出某一个顶点的入度和出度的弧，因此在有向图中，十字链表是非常好的数据结构。      
+
+
+- **邻接多重表**       
+对于无向图的邻接表，若关注的重点是顶点，那么邻接表可以满足要求，若是更关注边的操作，如对已访问的边做标记，删除一条边等，那么使用邻接表就会相对比较麻烦，要找到这条边对应的两个节点进行处理。使用邻接多重表结构：          
+| ivex | ilink | jvex | jlink |         
+ivex和jvex是与某条边依附的两个顶点在顶点表中的下标，ilink是顶点ivex所指的下一条边，jlink是顶点jvex所指的下一条边，在构造图的边结点时采用头插法，这样每个边结点会被两个指针所指：        
+![](https://i.imgur.com/6jXbAOr.png)                      
+关于邻接多重表的部分实现：           
+
+    	typedef int Status;
+	typedef enum MarkedIf{unmarked,marked}MarkedIf;
+	typedef int VertexType;
+	typedef int QElemType;
+
+	typedef struct	EdgeType{
+	int ivex, jvex;
+	struct EdgeType *ilink, *jlink;
+	MarkedIf mark;
+	float weight;
+	}EdgeType;
+
+	typedef struct VertexNode {
+	VertexType data;
+	bool isVisited;
+	EdgeType *firstarc;
+	}VertexNode;
+
+	typedef struct MultiAdjGraph {
+	VertexNode *adjlist;
+	int ivexNum, iedgeNum;
+	int MaxVertexNum;
+	}MultiAdjGraph;
+
+	typedef struct QNode {
+	QElemType data;
+	struct QNode *next;
+	}QNode,*QueuePtr;
+
+	typedef struct LinkQueue{
+	QueuePtr front, rear;
+	}LinkQueue;
+
+	//基本操作函数
+
+	//若G中存在顶点u，则返回该顶点在无向图中的位置，否则返回-1
+	int LocateVex(MultiAdjGraph G, VertexType u) {
+	int i;
+	for (int i = 0; i < G.ivexNum; ++i) {
+		if (G.adjlist[i].data==u)
+			return i;
+	}
+	return  ERROR;
+	}
+
+	//采用邻接多重表存储结构，构造无向图G
+	Status  CreateGraph(MultiAdjGraph &G) {
+	int i, j, OverInfo, IncInfo;
+	VertexType first, second; //存储向EdgeType中的两个下标
+	
+	printf("输入无向图G的顶点数，边数，边是否含权重信息(是:1，否:0):");
+	scanf_s("%d,%d,%d",&G.ivexNum,&G.iedgeNum,&OverInfo);
+	G.MaxVertexNum = G.ivexNum;
+	G.adjlist = new VertexNode[G.MaxVertexNum];
+	printf("\n请输入%d顶点的标识号,回车结束单次输入\n",G.ivexNum);
+
+	for (int i = 0; i < G.ivexNum; ++i) {
+		scanf_s("%d",&G.adjlist[i].data);
+		G.adjlist[i].firstarc = NULL;
+	}
+
+	printf("请输入由两点构成的边%d条（顶点下标由空格断开）\n",G.iedgeNum);
+	for (int k = 0; k < G.iedgeNum; ++k) {
+		scanf_s("%d %d%*c",&first,&second);   //*c吃掉换行符
+		//判断边的两个顶点的标示符是否存在图G中
+		i = LocateVex(G, first);
+		j = LocateVex(G, second);
+		if (i == ERROR || j == ERROR)
+			return 0;
+		EdgeType *pEdge = new EdgeType;
+		pEdge->ivex = i;
+		pEdge->jvex = j;
+		pEdge->ilink = G.adjlist[i].firstarc;
+		G.adjlist[i].firstarc = pEdge;
+		pEdge->jlink = G.adjlist[j].firstarc;
+		G.adjlist[j].firstarc = pEdge;    
+		//判断权值
+		if (OverInfo) {
+			printf("该边是否有权值（1:有 0：无）");
+			scanf_s("%d%*c",&IncInfo);
+			if (IncInfo) {
+				printf("请输入权值：");
+				scanf_s("%d",&pEdge->weight);
+			}
+		}
+		else {
+			pEdge->weight = 0;
+		}
+	}
+	return OK;
+	}
+
+	//返回v的值
+	VertexType GetVexValue(MultiAdjGraph G, int v) {
+	if (v >= G.ivexNum || v < 0)
+		return ERROR;
+	return G.adjlist[v].data;
+	}
+
+	//对v赋新值
+	Status PutVex(MultiAdjGraph *G, VertexType v, VertexType value) {
+	int i;
+	i = LocateVex(*G, v);
+	if (i)
+		G->adjlist[i].data = value;
+	return OK;
+	}
+
+	//返回第一个邻接点的序号，如果没有邻接点，返回错误
+	int FirstAdjVex(MultiAdjGraph G, VertexType v) {
+	int i;
+	i = LocateVex(G, v);
+	if (i) {
+		if (G.adjlist[i].firstarc) {
+			if (G.adjlist[i].firstarc->ivex == i)
+				return G.adjlist[i].firstarc->jvex;
+			else
+				return G.adjlist[i].firstarc->ivex;
+		}
+		else
+			return ERROR;
+	}
+	else
+		return ERROR;
+	}
+
+	//返回v的(相对于w的)下一个邻接定点的序号,若w是v的最后一个邻接点，则返回-1
+	int NextAdjVex(MultiAdjGraph G, VertexType v, VertexType w) {
+	int i, j;
+	EdgeType *e=NULL;
+	i = LocateVex(G, v);
+	j = LocateVex(G,w);    
+	if (i < 0 || j < 0) {
+		return ERROR;
+	}
+	e = G.adjlist[i].firstarc;
+	while (e) {
+		//邻接多重表内，顶点列表内的顶点指向的边结点内存储的下标分两种情况
+		if (e->ivex == i&&e->jvex != j)
+			e = e->ilink;
+		else if (e->jvex == i&&e->ivex != j)
+			e = e->jlink;
+		else//  说明v,w已经是邻接点
+			break;
+	}
+		if (e&&e->ivex == i&&e->jvex == j) {
+			e = e->ilink;
+			if (e&&e->ivex == i)
+				return e->jvex;
+			else if (e&&e->jvex == i)
+				return e->ivex;
+		}
+		if (e&&e->jvex == i&&e->ivex == j) {
+			e = e->jlink;
+			if (e&&e->ivex == i)
+				return e->jvex;
+			else if (e&&e->jvex == i)
+				return e->ivex;
+		}
+
+		return ERROR;
+	} 
+
+	//图中添加顶点，不添加与该顶点有关的边，交给InsertEdge函数处理
+	Status InsertVex(MultiAdjGraph *G, VertexType v) {
+	if (G->MaxVertexNum == G->ivexNum)
+	{
+		printf("结点已满，无法添加");
+		return ERROR;
+	}
+	if (LocateVex(*G, v) > 0) {
+		printf("结点已经存在，无法添加");
+		return ERROR;
+	}
+	G->adjlist[G->ivexNum].data = v;
+	G->adjlist[G->ivexNum].firstarc = NULL;
+	G->ivexNum++;
+	return OK;
+	}     
+
+	//在G中删除边（v,w）
+	Status DeleteEdge(MultiAdjGraph *G, VertexType v, VertexType w) {
+	int i, j;
+	EdgeType *p=NULL, *q=NULL;
+
+	i = LocateVex(*G, v);
+	j = LocateVex(*G,w);
+	if (i < 0 || j < 0)
+		return ERROR;
+	p = G->adjlist[i].firstarc;
+	q = NULL;
+	//假设第一条边即为待删除边
+	if (p&&p->jvex == j)
+		G->adjlist[i].firstarc = p->ilink;
+	else if (p&&p->ivex == j)
+		G->adjlist[i].firstarc = p->jlink;
+	//第一条边不为待删除边，先找到待删除的边
+	else {
+		while (p) {
+			if (p->ivex == i&&p->jvex != j) {
+				q = p;
+				p = p->ilink;
+			}
+			else if (p->jvex == i&&p->ivex != j) {
+				q = p;
+				p = p->jlink;
+			}
+			else
+				break;
+		}
+		if (!p)
+			return ERROR;
+		if (p->ivex == i&&p->jvex == j) {
+			if (q->ivex == i)
+				q->ilink = p->ilink;
+			else
+				q->jlink = p->ilink;
+		}
+		else if (p->jvex == i&&p->ivex == j) {
+			if (q->ivex == i)
+				q->ilink = p->jlink;
+			else
+				q->jlink = p->jlink;
+		}
+	}
+
+	//由另一起点开始搜索（由于邻接多重表中每一条边都有两个指针指向，所以必须将两条指针都清除）
+	p = G->adjlist[j].firstarc;
+	if (p->jvex == i) {    //这里没有做p是否存在的判断，是由于上一步已经将这条边找出来了，所以p必存在
+		G->adjlist[j].firstarc = p->ilink;
+		printf("删除的边为：%d--%d\n", G->adjlist[p->ivex].data, G->adjlist[p->jvex].data);
+		delete p;  //此时p的作用已经完成
+	}
+	else if (p->ivex == i) {
+		G->adjlist[j].firstarc = p->jlink;
+		printf("删除的边为：%d--%d\n", G->adjlist[p->ivex].data, G->adjlist[p->jvex].data);
+		delete p;
+	}
+	else {
+		while (p) {
+			if (p->ivex == j&&p->jvex != i) {
+				q = p;
+				p = p->ilink;
+			}
+			else if (p->jvex == j&&p->ivex != i) {
+				q = p;
+				p = p->jlink;
+			}
+			else
+				break;		
+		}
+		if (p->ivex == j&&p->jvex == i) {
+			if (q->ivex == j)
+				q->ilink = p->ilink;
+			else
+				q->jlink = p->ilink;
+			printf("删除的边为：%d--%d\n", G->adjlist[p->ivex].data, G->adjlist[p->jvex].data);
+			delete p;//p任务已经完成
+		}
+		else if (p->jvex == j&&p->ivex == i) {
+			if (q->ivex == j)
+				q->ilink = p->jlink;
+			else
+				q->jlink = p->jlink;
+			printf("删除的边为：%d--%d\n", G->adjlist[p->ivex].data, G->adjlist[p->jvex].data);
+			delete p;//p任务已经完成
+		}
+	}
+	G->iedgeNum--;
+	return OK;
+	}     
+
+	//删除图中G的顶点v及其相关的边
+	Status DeletaVex(MultiAdjGraph *G, VertexType v) {
+	int i,j;
+	VertexType w;
+	EdgeType *p=NULL;
+	i = LocateVex(*G, v);
+	if (i < 0)
+		return ERROR;
+	// 先处理相关的边
+	for (j = 0; j < G->ivexNum; ++j) {
+		if (j == i)
+			continue;
+		w = GetVexValue(*G, j);
+		DeleteEdge(G, v, w);
+	}
+	//再将顶点覆盖
+	for (j = i + 1; j < G->ivexNum; ++j) {
+		G->adjlist[j - 1] = G->adjlist[j];
+	}
+	--G->ivexNum;
+	//再将边界结点中存储的顶点下标进行更改（下标减一）
+	for (j = i; j < G->ivexNum; ++j) {
+		p = G->adjlist[j].firstarc;
+		while (p) {
+			if (p->ivex == j+1) {
+				p->ivex--;
+				p = p->ilink;
+			}
+			else {
+				p->jvex--;
+				p = p->jlink;
+			}
+		}
+	}
+	return OK;	
+	}
+
+	//删除图，删除图中的顶点及相关的边，并释放顶点数组空间
+	Status DestroyGraph(MultiAdjGraph *G) {
+	for (int i = 0; i < G->ivexNum; ++i)
+		DeletaVex(G, G->adjlist[i].data);
+	delete[](G->adjlist);
+	return OK;
+	}
+
+	//搜索图中是否存在边
+	bool SearchEdge(MultiAdjGraph G, VertexType v, VertexType w) {
+	int i, j;
+	EdgeType *p=NULL;
+
+	i = LocateVex(G, v);
+	j = LocateVex(G, w);
+	if (i < 0 || j < 0||i==j)
+		return false;
+	p = G.adjlist[i].firstarc;
+	while (p) {
+		if (p->ivex == i&&p->jvex == j)
+			return true;
+		else if (p->ivex == j&&p->jvex == i)
+			return true;
+		else if (p->ivex == i)
+			p = p->ilink;
+		else if (p->jvex == i)
+			p = p->jlink;
+	}
+	return false;
+	}
+
+	Status InsertEdge(MultiAdjGraph *G,VertexType v,VertexType w) {
+	int i, j;
+	i = LocateVex(*G, v);
+	j = LocateVex(*G,w);
+	if (i < 0 || j < 0 || i == j)
+		return ERROR;
+	if (SearchEdge(*G, v, w)) {
+		printf("该边已经存在图中");
+		return ERROR;
+	}
+	EdgeType *p = new EdgeType;
+	p->ivex = i;
+	p->jvex = j;
+	p->ilink = G->adjlist[i].firstarc;
+	G->adjlist[i].firstarc = p;
+	p->jlink = G->adjlist[j].firstarc;
+	G->adjlist[j].firstarc = p;
+	p->mark = unmarked;
+	p->weight = 0;
+	printf("\n新插入的边:%d--%d\n",G->adjlist[p->ivex].data,G->adjlist[p->jvex].data);
+	G->iedgeNum++;
+	return OK;
+	}
+
+	//寻找顶点v的邻接顶点，返回符合条件的顶点数目
+	int FindNextAdj(MultiAdjGraph G, VertexType v) {
+	int i,j;
+	EdgeType *p;
+	i = LocateVex(G, v);
+	if (i < 0)
+		return ERROR;
+	p = G.adjlist[i].firstarc;
+	j = 0;
+	if (p) {
+		printf("顶点%d的邻接顶点为:", v);
+		while (p) {
+			if (p->ivex == i)
+			{
+				printf("%4d", G.adjlist[p->jvex].data);
+				++j;
+				p = p->ilink;
+			}
+			else {
+				printf("%4d", G.adjlist[p->ivex].data);
+				++j;
+				p = p->jlink;
+			}
+		}
+	}
+	else
+		printf("该顶点没有邻接顶点");
+	return j;
+	}    
+
+	//设置顶点为未访问状态
+	void MarkUnVisited(MultiAdjGraph *G) {
+	int i;
+	EdgeType *p=NULL;
+	for (i = 0; i < G->ivexNum; ++i) {
+		p = G->adjlist[i].firstarc;
+		while (p) {
+			p->mark = unmarked;
+			if (p->ivex == i)
+				p = p->ilink;
+			else
+				p = p->jlink;
+		}
+	}
+	}
+
+	//输出图中的数据
+	Status ShowGraph(MultiAdjGraph G) {
+	int i;
+	EdgeType *p=NULL;
+
+	MarkUnVisited(&G);
+	printf("\n输出图：\n");
+	printf("%d个顶点\n", G.ivexNum);
+	for (i = 0; i < G.ivexNum; ++i)
+		printf("%d  ",G.adjlist[i].data);
+	printf("\n%d条边\n",G.iedgeNum);
+	for (i = 0; i < G.ivexNum; ++i) {
+		p = G.adjlist[i].firstarc;
+		while (p) {
+			if (p->ivex == i) {
+				//做遍历输出确保该边只被输出一次
+				if (p->mark == unmarked) {
+					printf("%d--%d 权值：%.2f     ", G.adjlist[i].data, G.adjlist[p->jvex].data, p->weight);
+					p->mark = marked;
+				}
+				p = p->ilink;
+			}
+			else {
+				if (p->mark == unmarked) {
+					printf("%d--%d, 权值：%.2f	     ", G.adjlist[i].data, G.adjlist[p->ivex].data, p->weight);
+					p->mark = marked;
+				}
+				p = p->jlink;
+			}
+		}
+		printf("\n");
+	}
+	return OK;
+	}
+	int main()
+	{
+	MultiAdjGraph *G=new MultiAdjGraph;
+	VertexType v1 = 0, v2 = 0;
+	int n;
+	CreateGraph(*G);    
+	ShowGraph(*G);      
+
+	//修改结点的值
+	printf("修改结点的值:结点原值 结点新值\n");
+	scanf_s("%d %d",&v1,&v2);
+	PutVex(G, v1, v2);
+	ShowGraph(*G);
+
+	//删除结点
+	printf("删除节点，请输入要删除的结点的值:\n");
+	scanf_s("%d",&v1);
+	DeletaVex(G, v1);
+	ShowGraph(*G);
+
+	//插入新节点
+	printf("\n插入新的结点，请输入节点的值:");
+	scanf_s("%d",&v1);
+	InsertVex(G,v1);
+	printf("\n请输入与该结点相关的边数：");
+	scanf_s("%d",&n);
+	for (int i = 0; i < n; ++i) {
+		printf("\n请输入与该结点连接的边的另一个结点的值：\n");
+		scanf_s("%d", &v2);
+		InsertEdge(G, v1, v2);
+	}
+	ShowGraph(*G);
+
+	getchar();
+	getchar();
+	getchar();
+	getchar();
+    return 0;
+	}
+
+
+
+- **边集数组**        
+边集数组有两个一维数组构成。一个存储顶点信息，一个存储边的信息，边数组的每个数据元素由每条边的起点下标和终点下标以及权重组成。边集数组关注的是边的集合，边集数组中查找顶点的度需要扫描整个边数组，效率不高，更适合对边依次处理的操作，不适合对顶点的相关操作。         
+![](https://i.imgur.com/lhqVqpe.png)      
+
+
+   
+
+
+
+
+
+      
+                  
+
+              
+
+
 
 
 
