@@ -228,9 +228,97 @@ a or b       如果a为True 返回结果为a 否则为b
 		合并：   
 		\(0\d{2,3}\)\d{7,8}|0\d{2,3}[ -]?\d{7,8}
 
+25. 列表解析       
 		
-		
+		list1=[1,3,4,6,9,12,23,34,38]
+		#获得list1中的偶数并构建成新的list
+		#使用传统方法：
+		list2=[]
+		for i in list1:
+    		if i%2==0:
+        	list2.append(i)
 
+		print list2
+
+		#使用列表解析
+		list3=[i for i in list1 if i%2==0]
+		print list3
+		#对元素的操作同样可以放在构建过程中，如对选出的偶数/2操作
+		list4=[i/2 for i in list1 if i%2==0]
+		print list4
+
+		print ';'.join([str(i) for i in range(1,100) if i%2==0&i%3==0&i%5==0])       
+
+26. 函数参数传递   
+	1.默认参数设置     
+ 	
+		func(a=1,b=2,c=3)
+		#调用不指定对应位置参数，则使用默认参数  
+		func(5)     a=5,b=2,c=3
+		#调用可以显示指定具体参数   
+		func(a=2,3,4) a=2,b=3,c=4   
+		func(a=4,c=5)  a=4,b=2,c=5  
+		#调用时没有指定参数名的参数在前，指定参数名的在后，且不可重复     
+		func(4,b=5)  允许
+		func(a=5,4)   不允许
+		func(5,a=5)    不允许 a参数被重复指定     
+	2.接受任意数量的参数    
+		
+		func(*args)      
+		#调用时可以传递多个参数(* 调用的参数存储在一个元组中)
+		func(1,2,3,4,5)
+		func(2,3,5)
+	3.将参数以键值对字典形式传入     
+
+		func(**kargs)
+		#调用时按照键值进行传参    
+		func(a=1,b=3,c=5)    
+	4.组合使用   
+		
+		def func(x,y=5,*args,**krgs):
+   		 	print x,y,args,krgs
+
+		func(3)
+		func(3,4)
+		func(3,4,5)
+		func(3,4,5,8)
+		func(x=1)
+		func(x=1,y=1)
+		func(x=1,y=1,a=1)
+		func(x=1,y=1,a=1,b=1)
+		func(1,y=1)
+		func(1,2,3,4,a=1)
+		func(1,2,3,4,a=1,b=2,c=3,k=4)
+		
+		#输出
+		3 5 () {}
+		3 4 () {}
+		3 4 (5,) {}
+		3 4 (5, 8) {}
+		1 5 () {}
+		1 1 () {}
+		1 1 () {'a': 1}
+		1 1 () {'a': 1, 'b': 1}
+		1 1 () {}
+		1 2 (3, 4) {'a': 1}
+		1 2 (3, 4) {'a': 1, 'c': 3, 'b': 2, 'k': 4}  
+
+		在混合使用时，首先要注意函数的写法，必须遵守：
+		带有默认值的形参(arg=)须在无默认值的形参(arg)之后；
+		元组参数(*args)须在带有默认值的形参(arg=)之后；
+		字典参数(**kargs)须在元组参数(*args)之后。
+
+		可以省略某种类型的参数，但仍需保证此顺序规则。
+
+		调用时也需要遵守：
+		指定参数名称的参数要在无指定参数名称的参数之后；
+		不可以重复传递，即按顺序提供某参数之后，又指定名称传递。
+
+		而在函数被调用时，参数的传递过程为：
+		1.按顺序把无指定参数的实参赋值给形参；
+		2.把指定参数名称(arg=v)的实参赋值给对应的形参；
+		3.将多余的无指定参数的实参打包成一个 tuple 传递给元组参数(*args)；
+		4.将多余的指定参数名的实参打包成一个 dict 传递给字典参数(**kargs)。
 ### 关于函数 ###
 **1.input()&raw_input()**         
 在Python2中，input()和raw-input()均可以接受用户输入，区别在于:        
@@ -280,8 +368,27 @@ input() 获取到的内容会转化为相应的类型并返回，例如输入 12
 	print 'random.randint'                  #输出范围内的整数，包括上下限
 	print random.randint(0,5)            #3    
 
-	random.choice(list)     #随机挑选列表中的元素并返回        
+	random.choice(list)     #随机挑选列表中的元素并返回       
+	
+	random.sample(population,k)   #对population进行随机取样k个元素生成新的序列，sample不改变原来的序列    
 
+	random.shuffle(x)  #将列表x中的顺序打乱，直接改变原来的序列。        
+
+	随机数中有随机种子概念，通过一个真实的随机数，类似此刻时间
+	或鼠标位置等，以此为基础产生伪随机数。Python中，默认使用系
+	统时间作为随机种子，random.seed(x)可以手动指定随机种子。一
+	般在调用其他随机函数前调用此方法，同一个种子下产生的随机数相同     
+	random.seed(10)
+	print 'Random number with seed 10:',random.random()
+	#输出：Random number with seed 10: 0.57140259469
+
+	random.seed(10)
+	print 'Random number with seed 10:',random.random()
+	#输出：Random number with seed 10: 0.57140259469
+
+	random.seed(10)
+	print 'Random number with seed 10:',random.random()     
+	#输出：Random number with seed 10: 0.57140259469
 **urllib**    
 
 	#获取网络资源模块
@@ -290,6 +397,14 @@ input() 获取到的内容会转化为相应的类型并返回，例如输入 12
 	content=web.read()
 	print content
 
+**time**     
+	#提供与时间相关的方法      
+	#epoch时间：表示的时间 1970-01-01 00:00:00 UTC       
+	time.time()  #表示从epoch到当前的秒数，该值被称为unix时间戳     
+	通过该方法记录程序运行的开始和结束时间，计算出运行时间       
+
+	time.sleep(secs) #使程序暂停secs秒  
+	
 
 
 
