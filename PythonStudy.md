@@ -332,8 +332,43 @@ lambda表达式是定义及调用函数的一种简写方式 （或叫匿名函�
 
 		#它的主体只能是一个表达式，不可以是代码块，甚至不能是命
 		令（print 不能用在 lambda 表达式中）。所以 lambda 表达
-		式能表达的逻辑很有限。    
+		式能表达的逻辑很有限。      
 
+28. map函数  
+
+		#使用map函数
+		#map为Python自带函数，其作用是将某个函数的功能全部应用到某一个序列中
+		def double_func(x):
+    			return 2*x
+		list2=map(double_func,list1)
+		print list2
+
+		#两个列表的元素相加
+		list3=[2,3,4,5,6]
+		list4=[4,5,6,7,8]
+		list5=map(lambda x,y:x+y,list3,list4)
+		print list5
+
+		#map 中的函数会从对应的列表中依次取出元素，
+		#作为参数使用，同样将结果以列表的形式返回。
+		#所以要注意的是，函数的参数个数要与 map 中提供的序列组数相同，
+		#即函数有几个参数，就得有几组数据。   
+
+29. reduce函数    
+map函数将某个规则映射到列表的每一个元素并生成的新的序列，而ruduce函数则是将某个规则应用到列表中的元素，并将所得结果与下一下元素继续应用规则，直到应用到列表的最后一个元素，最后得到输出。     
+		
+		#求一个数列的和
+		list1=range(1,101)
+		def add(x,y):
+    		return x+y
+
+		sum1=reduce(add,list1)
+		print sum1
+
+		#使用lambda表达式
+		sum2=reduce(lambda x,y:x+y,range(1,101))
+		print sum2
+	
 ### 关于函数 ###
 **1.input()&raw_input()**         
 在Python2中，input()和raw-input()均可以接受用户输入，区别在于:        
