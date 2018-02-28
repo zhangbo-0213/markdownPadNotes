@@ -65,7 +65,14 @@ l[:]
 str.split()默认按照空格将字符串分割，返回分割后的list，可以传入要分割的**字符**     
 
 16. 字符串连接join()         
-字符串的连接使用join(),将list内的成员连接成一个完整字符串,join()是字符串的方法，list(字符串也可以)是其参数，一般是用于连接的字符s调用该方法连接list，即  s.join(list)
+字符串的连接使用join(),将list内的成员连接成一个完整字符串,join()是字符串的方法，list(字符串也可以)是其参数，一般是用于连接的字符s调用该方法连接list，即  s.join(list)     
+
+17. 字符串首尾删除    
+s.strip(rm)        删除s字符串中开头、结尾处，位于 rm删除序列的字符  
+s.lstrip(rm)       删除s字符串中开头处，位于 rm删除序列的字符       
+s.rstrip(rm)      删除s字符串中结尾处，位于 rm删除序列的字符    
+注意：    
+ 当rm为空时，默认删除空白符（包括'\n', '\r',  '\t',  ' ')        
 
 17. 文件读取操作:        
 
@@ -375,9 +382,190 @@ Python中提供多线程模块,thread模块 ,其中提供函数  :
 		start_new_thread(function,args[,kwargs])  
 		#function为开发者定义的线程函数
 		#args是传递给线程函数的参数，必须是元组类型
-		#kwargs是可选参数   
-         
+		#kwargs是可选参数       
+32. 生成器     
+通过列表解析可以直接生成一个列表，由于受到内存限制，列表容量有限。如果列表元素可以通过某种算法推算出来，在循环过程中不断推出后续元素，就不必创建完整的列表，从而节省空间。Python中边循环边计算的机制，称为生成器。   
+
 	
+		#创建生成器的方法一，将列表解析中的[]改为()
+		L=(x*x for x in range(6))
+		#生成器的元素通过next（）函数得到
+		print next(L)
+		print next(L)
+		print next(L)
+		print next(L)
+		print next(L)
+		print next(L)
+		#生成器保存算法，每次调用next（）函数得到下一个元素的值，直到最后一个元素，没有更多元素时
+		#抛出StopIteration错误
+		#生成器也属于可迭代对象，可以通过for进行遍历
+		g=(2*x for x in range(10))
+		for n in g:
+    			print n
+
+		#创建生成器的方法二，使用yield关键字
+
+		#打印斐波那契数列的函数
+		def fbb(max):
+    			n,a,b=0,0,1
+   			while n<max:
+        			print b
+        			a,b=b,a+b
+        			n=n+1
+    			return 'done'
+		print fbb(6)
+
+		#如果想要保存斐波那契数列结果，一般做法需要通过列表保存下来
+		def fbb2(max):
+    			L=[]
+    			n,a,b=0,0,1
+    			while n<max:
+        			L.append(b)
+        			a,b=b,a+b
+        			n=n+1
+    			return L
+
+		print [x for x in fbb2(6)]
+
+		#而当这个数列需要返回的元素个数很多时，使用列表就会占用大量的空间，因此这里使用yield
+		#yield使普通函数作为一个生成器，每次只返回当前迭代的元素结果
+		def fbb3(max):
+    		n,a,b=0,0,1
+   		 		while n<max:
+        			yield b
+        			a,b=b,a+b
+        			n=n+1
+		#普通函数是顺序执行，而generator生成器是在调用next（）执行，遇到yield返回，yield后的结果，
+		#再次遇到next（）继续上一次的进行，直到没有更多元素，抛StopIteration异常结束
+		#生成器可迭代，因此通过for循环自动执行next()直到结束，不会抛出StopIteration异常
+		for x in fbb3(10):
+    		print x
+         
+		#计算杨辉三角
+		def YangAngles():
+    			L=[1]
+    			while True:
+        			yield L
+        			L=[1]+[L[n]+L[n+1] for n in range(len(L)-1)]+[1]
+	
+33. with ...as语法  
+【转载记录】           	  	
+先说明一个常见问题，文件打开：
+			
+			try:
+    				f = open('xxx')
+    				do something
+			except:
+    				do something
+			finally:
+    				f.close()
+其实不止一次在网上看到有这么写的了，这个是错的。 
+首先正确的如下：
+
+			try:
+   				 f = open('xxx')
+			except:
+    				print 'fail to open'
+    				exit(-1)
+			try:
+    				do something
+			except:
+    				do something
+			finally:
+   			f.close()
+很麻烦不是么，但正确的方法就是这么写。     
+我们为什么要写finally，是因为防止程序抛出异常最后不能关闭文件，但是需要关闭文件有一个前提就是文件已经打开了。      
+在第一段错误代码中，如果异常发生在f=open(‘xxx’)的时候，比如文件不存在，立马就可以知道执行f.close()是没有意义的。改正后的解决方案就是第二段代码。      
+开始讨论with语法。       
+首先从try-finally的语法结构说起：
+
+		set things up
+		try:
+    			do something
+		finally:
+    			tear things down
+这东西是个常见结构，比如文件打开，set things up就表示f=open(‘xxx’)，tear things down就表示f.close()。在比如像多线程锁，资源请求，最终都有一个释放的需求。Try…finally结构保证了tear things down这一段永远都会执行，即使上面do something得工作没有完全执行。                                 
+如果经常用这种结构，我们首先可以采取一个较为优雅的办法，封装！       
+	
+		def controlled_execution(callback):
+    		set things up
+    		try:
+        		callback(thing)
+   	 	finally:
+        		tear things down
+
+		def my_function(thing):
+    		do something
+
+		controlled_execution(my_function)
+封装是一个支持代码重用的好办法，但是这个办法很dirty，特别是当do something中有修改一些local variables的时候（变成函数调用，少不了带来变量作用域上的麻烦）。                       
+另一个办法是使用生成器，但是只需要生成一次数据，我们用for-in结构去调用他：   
+	
+		def controlled_execution():
+    			set things up
+   			try:
+        			yield thing
+    			finally:
+        			tear things down
+		for thing in controlled_execution():
+   	 		do something with thing
+因为thing只有一个，所以yield语句只需要执行一次。当然，从代码可读性也就是优雅的角度来说这简直是糟糕透了。我们在确定for循环只执行一次的情况下依然使用了for循环，这代码给不知道的人看一定很难理解这里的循环是什么个道理。
+最终的python-dev团队的解决方案。（python 2.5以后增加了with表达式的语法）
+
+		class controlled_execution:
+    			def __enter__(self):
+        			set things up
+        			return thing
+    			def __exit__(self, type, value, traceback):
+        			tear things down
+
+		with controlled_execution() as thing:
+        		do something
+在这里，python使用了with-as的语法。当python执行这一句时，会调用__enter__函数，然后把该函数return的值传给as后指定的变量。之后，python会执行下面do something的语句块。最后不论在该语句块出现了什么异常，都会在离开时执行__exit__。                       
+另外，__exit__除了用于tear things down，还可以进行异常的监控和处理，注意后几个参数。要跳过一个异常，只需要返回该函数True即可。下面的样例代码跳过了所有的TypeError，而让其他异常正常抛出。          
+
+		def __exit__(self, type, value, traceback):
+    			return isinstance(value, TypeError)
+在python2.5及以后，file对象已经写好了enter和exit函数，我们可以这样测试：
+
+		>>> f = open("x.txt")
+		>>> f
+		<open file 'x.txt', mode 'r' at 0x00AE82F0>
+		>>> f.__enter__()
+		<open file 'x.txt', mode 'r' at 0x00AE82F0>
+		>>> f.read(1)
+		'X'
+		>>> f.__exit__(None, None, None)
+		>>> f.read(1)
+		Traceback (most recent call last):
+    		File "<stdin>", line 1, in <module>
+		ValueError: I/O operation on closed file
+之后，我们如果要打开文件并保证最后关闭他，只需要这么做：
+
+		with open("x.txt") as f:
+    			data = f.read()
+    			do something with data
+如果有多个项，我们可以这么写：
+
+		with open("x.txt") as f1, open('xxx.txt') as f2:
+    			do something with f1,f2
+上文说了__exit__函数可以进行部分异常的处理，如果我们不在这个函数中处理异常，他会正常抛出，这时候我们可以这样写（python 2.7及以上版本，之前的版本参考使用contextlib.nested这个库函数）：
+
+		try:
+    			with open( "a.txt" ) as f :
+        		do something
+		except xxxError:
+    		do something about exception
+总之，with-as表达式极大的简化了每次写finally的工作，这对保持代码的优雅性是有极大帮助的。
+
+		with-block等价于
+
+		try:  
+      			执行 __enter__的内容  
+      			执行 with_block.  
+		finally:  
+      			执行 __exit__内容 
+
 ### 关于函数 ###
 **1.input()&raw_input()**         
 在Python2中，input()和raw-input()均可以接受用户输入，区别在于:        
@@ -465,6 +653,16 @@ input() 获取到的内容会转化为相应的类型并返回，例如输入 12
 	time.sleep(secs) #使程序暂停secs秒  
 	
 
+### python爬虫小实例 ###
+#### Requests+ 正则表达式爬取 猫眼电影####
+**step1-抓取单页内容**    
+利用requests请求目标站点，得到单个网页的HTML代码，返回结果       
+**step2-正则表达式分析**    
+根据HTML代码分析得到电影的名称，主演，上映时间，评分，图片链接等信息         
+**step3-保存至文件**    
+通过文件的形式将结果保存，每一部电影一个结果一行JSON字符串         
+**step4-开启循环及多线程**     
+对多页面内容遍历，开启多线程提高抓取速度         
 
 
 
