@@ -12,7 +12,7 @@ Edit->Project setting->Graphics->Scriptable Render Pipeline Settings
 ![](https://i.imgur.com/jXHMbJJ.png)             
 ### 创建Graph文件 ###
 create->shader->Unlit/PBR/Sub Shader     
-![](https://i.imgur.com/LQNdNzr.png)   
+![](https://i.imgur.com/KNOK4tz.png)   
 ### 切换游戏物体的shader ###
 设置材质组件中所用的shader为目标shader    
 
