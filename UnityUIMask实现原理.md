@@ -95,7 +95,7 @@ WriteMask [ _StencilWriteMask]
 **Comp**：   
 是定义参考值（referenceValue）与缓冲值（stencilBufferValue）比较的操作函数，默认值：always       
 ComparisonFunction比较操作通过Comp命令定义，公式左右两边的结果将通过它进行判断，其取值及其意义如下面列表所示：      
-![](https://i.imgur.com/uYCPiRp.png)
+![](https://i.imgur.com/uYCPiRp.png)      
 **Pass**：     
 是定义当模板测试（和深度测试）通过时，则根据（stencilOperation值）对模板缓冲值（stencilBufferValue）进行处理，默认值：keep    
 stencilOperation命令值列表：     
