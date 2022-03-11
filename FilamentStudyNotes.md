@@ -12,6 +12,7 @@
 * cmake SetTarget(command+shift+p)
 * cmake Debug(command+shift+p)
 * F5 调试  
+
 ## hellotriangle 学习  
 ```c++  
 using namespace filament;
@@ -134,6 +135,93 @@ int main(int argc, char** argv) {
 }
 
 ```    
+
+## hellopbr学习   
+```C++  
+using namespace filament;
+using namespace filamesh;
+using namespace filament::math;
+
+using Backend = Engine::Backend;
+
+//加载mesh模型，vbo,vao对象在mesh对象载入的函数中构建
+struct App {
+    utils::Entity light;
+    Material* material;
+    MaterialInstance* materialInstance;
+    MeshReader::Mesh mesh;
+    //变换矩阵
+    mat4f transform;
+};
+
+static const char* IBL_FOLDER = "assets/ibl/lightroom_14b";
+
+int main(int argc, char** argv) {
+    //实例化配置 config
+    Config config;
+    config.title = "hellopbr";
+    config.iblDirectory = FilamentApp::getRootAssetsPath() + IBL_FOLDER;
+
+    //实例化结构体app 在setup实现函数中配置app结构体数据
+    App app;
+    auto setup = [config, &app](Engine* engine, View* view, Scene* scene) {
+        //获取对应manager
+        auto& tcm = engine->getTransformManager();
+        auto& rcm = engine->getRenderableManager();
+        auto& em = utils::EntityManager::get();
+
+        // Instantiate material.实例化材质，填充材质默认数据
+        app.material = Material::Builder()
+            .package(RESOURCES_AIDEFAULTMAT_DATA, RESOURCES_AIDEFAULTMAT_SIZE).build(*engine);
+        auto mi = app.materialInstance = app.material->createInstance();
+        //设置材质参数
+        mi->setParameter("baseColor", RgbType::LINEAR, float3{0.8,0.2,0.4});
+        mi->setParameter("metallic", 1.0f);
+        mi->setParameter("roughness", 0.4f);
+        mi->setParameter("reflectance", 0.5f);
+
+        // Add geometry into the scene.加载mesh数据
+        app.mesh = MeshReader::loadMeshFromBuffer(engine, MONKEY_SUZANNE_DATA, nullptr, nullptr, mi);
+        auto ti = tcm.getInstance(app.mesh.renderable);
+        //矩阵变换，获取mesh的transform组件做（缩放，平移）操作（左手坐标系）
+        app.transform = mat4f{ mat3f(1), float3(0, 8, -15) } * tcm.getWorldTransform(ti);
+        rcm.setCastShadows(rcm.getInstance(app.mesh.renderable), false);
+        //场景中添加可渲染对象entity
+        scene->addEntity(app.mesh.renderable);
+
+        // Add light sources into the scene.配置光源参数，场景中添加光源实例
+        app.light = em.create();
+        LightManager::Builder(LightManager::Type::SUN)
+                .color(Color::toLinear<ACCURATE>(sRGBColor(0.98f, 0.92f, 0.89f)))
+                .intensity(110000)
+                .direction({ 0.7, -1, -0.8 })
+                .sunAngularRadius(1.9f)
+                .castShadows(false)
+                .build(*engine, app.light);
+        scene->addEntity(app.light);
+    };
+
+    auto cleanup = [&app](Engine* engine, View*, Scene*) {
+        engine->destroy(app.light);
+        engine->destroy(app.materialInstance);
+        engine->destroy(app.mesh.renderable);
+        engine->destroy(app.material);
+    };
+
+    FilamentApp::get().animate([&app](Engine* engine, View* view, double now) {
+        auto& tcm = engine->getTransformManager();
+        auto ti = tcm.getInstance(app.mesh.renderable);
+        //设置旋转变换
+        tcm.setTransform(ti, app.transform * mat4f::rotation(now, float3{ 0, 1, 0 }));
+    });
+
+    FilamentApp::get().run(config, setup, cleanup);
+
+    return 0;
+}
+```   
+
+
 
 
 
