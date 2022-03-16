@@ -224,6 +224,9 @@ int main(int argc, char** argv) {
 ## material_sandbox学习  
 ![material_sandbox学习](https://github.com/zhangbo-0213/PictureRepository/blob/main/Filament_Material_sandbox.png)   
 
+## textureQuad学习    
+![textureQuad学习](https://github.com/zhangbo-0213/PictureRepository/blob/main/TexturedQuad学习.png)
+
 
 
 
