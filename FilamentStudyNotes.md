@@ -228,7 +228,44 @@ int main(int argc, char** argv) {
 ![textureQuad学习](https://github.com/zhangbo-0213/PictureRepository/blob/main/TexturedQuad学习.png)  
 
 ## gltfInstance学习 
-![gltfInstance学习](https://github.com/zhangbo-0213/PictureRepository/blob/main/GLTF_Instance学习.png)
+![gltfInstance学习](https://github.com/zhangbo-0213/PictureRepository/blob/main/GLTF_Instance学习.png)  
+
+## 材质系统 
+### 材质定义格式  
+材质定义的格式是一种松散地基于JSON的格式，称之为JSONish。在顶层，材质定义由 JSON 对象表示的3个不同块组成：      
+- material{}  
+- vertex {} //可选部分  
+- fragment {}  
+
+材质参数小结：   
+![材质参数](https://github.com/zhangbo-0213/PictureRepository/blob/main/FILAMENT_MATERIAL_SHADER.png)
+
+参考：   
+- [材质shader格式](https://blog.csdn.net/jiamada/article/details/123244709?spm=1001.2014.3001.5502)  
+- [材质系统API](https://blog.csdn.net/jiamada/article/details/123415907?spm=1001.2014.3001.5502)   
+
+### 材质构建流程    
+- 编译 material.mat 生成编译后文件及系统定义 RESOURCE_MATERIAL_DATA  RESOURCE_MATERIAL_SIZE    
+- 生成材质对象：  
+```
+Material *mat=Material::Builder()
+                        .package(RESOURCE_MATERIAL_DATA
+                        ,RESOURCE_MATERIAL_SIZE)
+                        .build(*engine);
+```  
+- 生成材质实例：  
+```  
+MaterialInstance *matIns=mat->createInstance();
+```  
+- 材质实例传参：  
+``` 
+matIns->setParameters("paramName",value);  
+```   
+- 材质实例绑定：  
+``` 
+RenderableManager.setMaterialInstanceAt(RenderableManagerInstance,primitiveIndex,matIns);  
+```   
+
 
 
 
