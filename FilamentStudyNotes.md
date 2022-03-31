@@ -247,24 +247,58 @@ int main(int argc, char** argv) {
 ### 材质构建流程    
 - 编译 material.mat 生成编译后文件及系统定义 RESOURCE_MATERIAL_DATA  RESOURCE_MATERIAL_SIZE    
 - 生成材质对象：  
-```
+``` C++
 Material *mat=Material::Builder()
                         .package(RESOURCE_MATERIAL_DATA
                         ,RESOURCE_MATERIAL_SIZE)
                         .build(*engine);
 ```  
 - 生成材质实例：  
-```  
+```  C++
 MaterialInstance *matIns=mat->createInstance();
 ```  
 - 材质实例传参：  
-``` 
+``` C++
 matIns->setParameters("paramName",value);  
 ```   
 - 材质实例绑定：  
-``` 
+``` C++
 RenderableManager.setMaterialInstanceAt(RenderableManagerInstance,primitiveIndex,matIns);  
 ```   
+### 通过纯参数化形式构建材质实例  
+``` C++
+using namespace filamat;
+    MaterialBuilder builder;
+    builder
+        .name("My material")
+        .material("void material (inout MaterialInputs material) {"
+                "  prepareMaterial(material);"
+                "  material.baseColor.rgb = materialParams.baseColor;"
+                "  material.emissive = materialParams.emissive;"
+                "}")
+        //传入Fragment 片元着色器部分代码
+        .parameter(filament::backend::UniformType::FLOAT3, 1, "baseColor")
+        .parameter(filament::backend::UniformType::FLOAT4, 1, "emissive")
+        .shading(MaterialBuilder::Shading::UNLIT)
+        .targetApi(MaterialBuilder::TargetApi::ALL)
+        .platform(MaterialBuilder::Platform::ALL);
+
+    Package package = builder.build(mEngine->getJobSystem()); //子线程构建材质
+    if (package.isValid()) {
+        mLightingOnMaterial = Material::Builder().package(package.getData(), package.getSize()).build(*mEngine);
+        mLightingOnMaterialInstance = mLightingOnMaterial->createInstance();
+        mLightingOnMaterialInstance->setParameter("baseColor", RgbType::sRGB, sRGBColor(1, 1, 1));
+    }
+```
+
+## Filament模型资源实例化  
+![Filament模型资源实例化](https://github.com/zhangbo-0213/PictureRepository/blob/main/Filament_Asset_Instance.png)
+
+## Filament窗口交互应用框架   
+![Filament窗口交互应用框架](https://github.com/zhangbo-0213/PictureRepository/blob/main/Filament跨平台窗口交互应用.png) 
+
+
+
 
 
 
