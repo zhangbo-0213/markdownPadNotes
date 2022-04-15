@@ -39,4 +39,23 @@ git checkout -b name //新建分支并切换
 
 对远程分支和本地分支进行关联以后我们使用很多命令就不需要指定对应的分支参数，默认会使用你远程分支，这有利于我们节省时间去敲命令，但是不利于进行git命令的纠错。   
 
----
+---   
+
+### Git fetch和git pull的区别:
+
+都可以从远程获取最新版本到本地
+
+1. Git fetch:只是从远程获取最新版本到本地,不会merge(合并)
+``` 
+$:git fetch origin master     
+//从远程的origin的master主分支上获取最新版本到origin/master分支上     
+$:git log -p master..origin/master   
+//比较本地的master分支和origin/master分支的区别
+$:git merge origin/master           
+//合并
+ ```
+2. Git pull:从远程获取最新版本并merge(合并)到本地   
+```
+$:git pull origin master    
+//相当于进行了 git fetch 和 git merge两步操作
+实际工作中,可能git fetch更好一些, 因为在merge前,可以根据实际情况决定是否merge
