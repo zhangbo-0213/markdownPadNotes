@@ -37,8 +37,14 @@ git log --oneline --decorate
 ```
 git checkout tags/v1.21.0  
 ```
----   
+---     
 
+## 子模块  
+父项目的子模块独立于项目，在做更新时与父项目的更新拉取独立
+
+
+
+---
 ### Git fetch和git pull的区别:
 
 都可以从远程获取最新版本到本地
@@ -63,7 +69,7 @@ $:git pull origin master
 ```  
 git mv oldname newname  #重命名文件
 git commit -m "重命名文件"
-//如果已经推送到远端，则需要
+//如果需要推送到远端
 git push origin 分支名  
 ```
 
