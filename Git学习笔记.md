@@ -37,7 +37,7 @@ git log --oneline --decorate
 ```
 git checkout tags/v1.21.0  
 ```
----     
+---       
 
 ## 子模块  
 父项目的子模块独立于项目，在做更新时与父项目的更新拉取独立
@@ -63,6 +63,21 @@ $:git merge origin/master
 $:git pull origin master    
 //相当于进行了 git fetch 和 git merge两步操作
 实际工作中,可能git fetch更好一些, 因为在merge前,可以根据实际情况决定是否merge   
+```  
+
+### git 提交   
+```  
+提交前拉取，保证是最新的状态： 
+git pull   
+如果落后于当前版本，同步到最新，拉取也视为一次提交，添加提交信息： //merge to master [wq]
+添加当前目录下所有的修改：   
+git add *  
+查看已经添加的内容：  
+git status  
+确认提交   
+git commit -m"add info"  
+推送   
+git push 
 ```  
 
 ### git修改文件名     
