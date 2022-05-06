@@ -37,6 +37,10 @@ git log --oneline --decorate
 4. git改变当前分支的HEAD  
 ```
 git checkout tags/v1.21.0  
+```   
+5. git分支后续提交  
+``` 
+git push origin branchName 
 ```
 ---       
 
