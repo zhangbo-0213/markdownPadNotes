@@ -38,9 +38,10 @@ git log --oneline --decorate
 ```
 git checkout tags/v1.21.0  
 ```   
-5. git分支后续提交  
+5. git分支后续提交，拉取  
 ``` 
-git push origin branchName 
+git push origin branchName   
+git pull origin branchName 
 ```
 ---       
 
