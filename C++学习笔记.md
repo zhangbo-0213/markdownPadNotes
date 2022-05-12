@@ -131,4 +131,15 @@ int &&rr1 = i *42;  //正确，i*42是一个右值
 左值可以被赋值，右值不可以被赋值，可以用来给左值赋值。
 左值可变,右值不可变（仅对基础类型适用，用户自定义类型右值引用可以通过成员函数改变）。
 
----
+---     
+
+## Vector.size() 使用问题    
+vector 的size函数返回vector集合内元素的数量，返回值类型为size_type，Member type size_type is an unsigned integral type，即无符号整数；
+
+vector A;
+
+A.size()-1因为size返回值是无符号类型所以 A.size()-1越界，是个很大的数
+所以要用的时候
+要么预先定义一个 int n = A.size() - 1;
+或者int(A.size() - 1)或者int(A.size()) - 1
+或者static_cast<int>(A.size())
