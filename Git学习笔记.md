@@ -92,7 +92,20 @@ git mv oldname newname  #重命名文件
 git commit -m "重命名文件"
 //如果需要推送到远端
 git push origin 分支名  
-```
+```  
+
+### git 取消 add   
+add 之后取消    
+``` 
+git reset HEAD //整体回到上次一次操作(Add之前的状态)  
+```   
+
+### git 本地回滚      
+```  
+git reset --hard HEAD~1   //回滚到上一次提交
+```  
+
+
 
 ## Git问题解决办法 ###
 ---
