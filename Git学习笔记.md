@@ -99,6 +99,10 @@ add 之后取消
 ``` 
 git reset HEAD //整体回到上次一次操作(Add之前的状态)  
 ```   
+### git 放弃本地修改 (add 前)    
+``` 
+git checkout .  //在add之前放弃所有的本地修改   
+```
 
 ### git 本地回滚      
 ```  
