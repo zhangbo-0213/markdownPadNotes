@@ -83,8 +83,21 @@ git status
 确认提交   
 git commit -m"add info"  
 推送   
-git push 
+git push    
 ```  
+
+如果在提交前 pull,出现冲突：   
+```  
+Please, commit your changes or stash them before you can merge   
+```  
+说明已经有人提交到分支的内容与当前修改有冲突，解决：   
+```  
+git stash   
+git pull
+git stash pop 
+```    
+通过git stash将工作区恢复到上次提交的内容，同时备份本地所做的修改，之后就可以正常git pull了，git pull完成后，执行git stash pop将之前本地做的修改应用到当前工作区。然后正常提交。
+
 
 ### git修改文件名     
 ```  
