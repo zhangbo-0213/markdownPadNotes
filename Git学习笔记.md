@@ -42,8 +42,14 @@ git checkout tags/v1.21.0
 ``` 
 git push origin branchName   
 git pull origin branchName 
+```  
+6. git 分支删除   
+``` 
+git branch -d name   //本地分支删除    
+git push origin --delete name  //远程分支删除
 ```
----       
+---        
+
 
 ## 子模块  
 父项目的子模块独立于项目，在做更新时与父项目的更新拉取独立
