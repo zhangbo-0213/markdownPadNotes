@@ -54,6 +54,12 @@ git bbranch -r
 ``` 
 ---        
 
+8. git 拉取远程分支并创建本地关联分支   
+```  
+git fetch origin branchPathName:branchName  
+git chechkout branchName
+```  
+
 
 ## 子模块  
 父项目的子模块独立于项目，在做更新时与父项目的更新拉取独立
