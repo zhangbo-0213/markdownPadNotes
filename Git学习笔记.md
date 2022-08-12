@@ -139,8 +139,20 @@ git reset --hard HEAD~1   //回滚到上一次提交
 $ git reset --hard HEAD^ //回退到上个版本
 $ git reset --hard HEAD~3 //回退到前3次提交之前，以此类推，回退到n次提交之前
 $ git reset --hard commit_id //退到/进到 指定commit的sha码
-
-
+```    
+### git 忽略     
+本地仓库根目录新建 .gitignore 文件    
+一定要将 .gitignore 文件放到 git 工程的根目录，否则配置是不会生效的。
+```  
+touch .gitignore    
+```     
+写入需要忽略的文件/文件夹     
+如果需要忽略的文件/文件夹 在之前已经提交过，则需要在暂存区中予以清除：   
+```   
+git rm -r --cached obj/       
+git commit -m -a "删除不需要的文件"    
+git push   
+```   
 
 ## Git问题解决办法 ###
 ---
