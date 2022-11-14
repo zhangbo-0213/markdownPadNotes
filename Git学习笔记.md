@@ -50,7 +50,7 @@ git push origin --delete name  //远程分支删除
 ```  
 7. git 查看所有远程分支   
 ``` 
-git bbranch -r
+git branch -r
 ``` 
 ---        
 
