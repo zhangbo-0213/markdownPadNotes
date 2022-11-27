@@ -59,7 +59,10 @@ git branch -r
 git fetch origin branchPathName:branchName  
 git chechkout branchName
 ```  
-
+9. git 合并产生冲突，放弃合并
+```
+git merge --abort
+```
 
 ## 子模块  
 父项目的子模块独立于项目，在做更新时与父项目的更新拉取独立
