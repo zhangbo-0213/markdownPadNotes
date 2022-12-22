@@ -131,6 +131,11 @@ add 之后取消
 ``` 
 git reset HEAD //整体回到上次一次操作(Add之前的状态)  
 ```   
+### git add commit 后取消 push 
+``` 
+git reset --soft HEAD~1 (整体回到上一次commimt前 add 操作保留) 
+git reset --hard HEAD~1 (整体回到上一次操作，commit，add 操作均不再保留)
+``` 
 ### git 放弃本地修改 (add 前)    
 ``` 
 git checkout .  //在add之前放弃所有的本地修改   
