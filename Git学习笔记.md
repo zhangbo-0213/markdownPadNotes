@@ -162,6 +162,30 @@ git commit -m -a "删除不需要的文件"
 git push   
 ```   
 
+### Git LFS 大文件系统  
+出现lfs 未追踪的情况：  
+``` 
+检查是否已经添加追踪类型:
+git lfs track  
+添加追踪类型：  
+git lfs track "*.psd"   
+添加追踪属性配置：  
+git add .gitattributes   
+```
+若以上均没有问题：  
+```
+配置以下状态：  
+git config lfs.https://git.lotuscars.com.cn/L3DGroup/L3DKit.git/info/lfs.locksverify true  
+
+添加命令：  
+git add --renormalize .  
+
+再次提交：
+git lfs push origin master
+```   
+
+
+
 ## Git问题解决办法 ###
 ---
 
