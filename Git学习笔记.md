@@ -184,6 +184,15 @@ git add --renormalize .
 git lfs push origin master
 ```   
 
+未修改本地模型文件(针对只有lfs 的变动)，但是出现 Change:  
+```
+git rm --cached -r .
+git reset --hard
+git rm .gitattributes
+git reset .
+git checkout .
+```
+
 
 
 ## Git问题解决办法 ###
