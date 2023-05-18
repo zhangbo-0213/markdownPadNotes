@@ -142,4 +142,51 @@ A.size()-1因为size返回值是无符号类型所以 A.size()-1越界，是个�
 所以要用的时候
 要么预先定义一个 int n = A.size() - 1;
 或者int(A.size() - 1)或者int(A.size()) - 1
-或者static_cast<int>(A.size())
+或者static_cast<int>(A.size()) 
+
+## 命名空间内函数指针成员的使用  
+函数指针可以作为命名空间内的成员，当命名空间内的类不想通过头文件暴露出去，而外部需要获取这个类内部信息时，可以通过命名空间内 函数指针的方式，获取未暴露在头文件中的类的内部信息   
+``` C++
+namespace utils {
+using FilamentErrorLogCallBack = std::function<void(const char*)>;
+static FilamentErrorLogCallBack filamentErrorLogCallBack;
+} 
+```  
+```  C++
+namespace utils {
+namespace io {
+//初始化 static 函数指针
+FilamentErrorLogCallBack filamentErrorLogCallBack = nullptr;
+class LogStream : public ostream {
+public:
+    ostream& flush() noexcept override;
+};
+
+ostream& LogStream::flush() noexcept {
+    std::lock_guard lock(mImpl->mLock);
+    Buffer& buf = getBuffer();
+    if(filamentErrorLogCallBack != nullptr)
+        {
+            filamentErrorLogCallBack(buf.get());
+        }
+    }
+}
+}
+```  
+外部使用：  
+```  C++  
+namespace utils {
+namespace  io {
+FilamentErrorLogCallBack filamentErrorLogCallBack = [](const char * info){Printf(info);};
+}
+}
+```  
+
+## 使用位操作符进行色值转换   
+0xffffff 十六进制的颜色值共有24位，使用左移操作符进行快捷转换  
+``` C++ 
+unsigned long createRGB(float r, float g, float b)
+{
+  return ((((int)r * 255) & 0xff) << 16) + (((int)(g * 255) & 0xff) << 8) + (((int)(b * 255) & 0xff));
+}
+```
