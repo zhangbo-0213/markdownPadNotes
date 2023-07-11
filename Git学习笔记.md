@@ -162,6 +162,29 @@ git commit -m -a "删除不需要的文件"
 git push   
 ```   
 
+### git 合并另一分支的某一次提交 
+需要将A分支的某次提交记录 ，合并到B分支
+- 切回到 A分支   
+找到提交的commit id 可以使用git log 命令 或者 右键上次提交的记录  copy reversion number        
+``` 
+git checkout A
+git log 
+``` 
+- 切回到 B分支   
+```
+git cherry-pick  A的 commitID  回车
+```   
+- 最后 
+```
+git status /git push
+```
+如果遇到问题，可以使用 
+```
+git cherry-pick --abort 
+//放弃本次合并的需要
+```
+
+
 ### Git LFS 大文件系统  
 出现lfs 未追踪的情况：  
 ``` 
